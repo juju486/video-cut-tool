@@ -1,0 +1,27 @@
+# 忽略 node 依赖
+node_modules/
+
+# 忽略所有常见视频文件
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.flv
+*.wmv
+*.webm
+*.m4v
+*.3gp
+*.ts
+*.mpeg
+*.mpg
+*.rmvb
+*.rm
+*.vob
+*.ogv
+*.mxf
+*.f4v
+*.m2ts
+*.mts
+*.yuv
+*.asf
+*.m3u8
