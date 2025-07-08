@@ -1,14 +1,22 @@
+const yaml = require('js-yaml');
 const fs = require('fs-extra');
 const path = require('path');
 const ProgressBar = require('progress');
 const {
   concatClips,
-  shuffle
+  shuffle,
+  getClipDuration
 } = require('./video_utils');
 
-const clipsDir = path.join(__dirname, 'clips');
-const openDir = path.join(__dirname, 'open');
-const outputDir = path.join(__dirname, 'output');
+// 读取配置
+const config = yaml.load(fs.readFileSync(path.join(__dirname, 'config.yaml'), 'utf8'));
+const clipsDir = path.join(__dirname, config.clipsDir || 'clips');
+const openDir = path.join(__dirname, config.openDir || 'open');
+const outputDir = path.join(__dirname, config.outputDir || 'output');
+const numNewVideos = config.numNewVideos || 3;
+const clipsPerVideo = config.clipsPerVideo || 10;
+const minVideoDuration = config.minVideoDuration;
+const maxVideoDuration = config.maxVideoDuration;
 
 // 生成别名（支持任意数量，a-z, aa-zz, ...）
 function genAliasArr(n) {
@@ -26,7 +34,7 @@ function genAliasArr(n) {
   return arr;
 }
 
-async function composeVideosWithOpen(numNewVideos = 3, clipsPerVideo = 10) {
+async function composeVideosWithOpen() {
   await fs.ensureDir(outputDir);
   const allClips = fs.readdirSync(clipsDir).filter(f => /\.mp4$/i.test(f)).map(f => path.join(clipsDir, f));
   const openFiles = fs.existsSync(openDir)
@@ -68,26 +76,55 @@ async function composeVideosWithOpen(numNewVideos = 3, clipsPerVideo = 10) {
   for (let i = 0; i < numNewVideos; i++) {
     let order;
     let selectedClips;
-    do {
-      const idxs = shuffle([...Array(allClips.length).keys()]).slice(0, clipsPerVideo);
-      order = idxs.join(',');
-      selectedClips = idxs.map(idx => allClips[idx]);
-    } while (usedOrders.has(order));
-    usedOrders.add(order);
-    if (openAssign.length > 0) {
-      selectedClips = [openAssign[i]].concat(selectedClips);
+    let selectedDur = 0;
+    let idList;
+    // 动态选片段直到满足时长区间
+    if (minVideoDuration && maxVideoDuration) {
+      let tryCount = 0;
+      do {
+        tryCount++;
+        const idxs = shuffle([...Array(allClips.length).keys()]);
+        let tmpClips = [];
+        let tmpDur = 0;
+        for (let idx of idxs) {
+          const f = allClips[idx];
+          const dur = await getClipDuration(f);
+          if (tmpDur + dur > maxVideoDuration) break;
+          tmpClips.push(f);
+          tmpDur += dur;
+          if (tmpDur >= minVideoDuration) break;
+        }
+        selectedClips = tmpClips;
+        selectedDur = tmpDur;
+        order = selectedClips.map(f => allClips.indexOf(f)).join(',');
+      } while ((selectedDur < minVideoDuration || selectedDur > maxVideoDuration || usedOrders.has(order)) && tryCount < 100);
+      if (openAssign.length > 0) {
+        selectedClips = [openAssign[i]].concat(selectedClips);
+      }
+    } else {
+      do {
+        const idxs = shuffle([...Array(allClips.length).keys()]).slice(0, clipsPerVideo);
+        order = idxs.join(',');
+        selectedClips = idxs.map(idx => allClips[idx]);
+      } while (usedOrders.has(order));
+      usedOrders.add(order);
+      if (openAssign.length > 0) {
+        selectedClips = [openAssign[i]].concat(selectedClips);
+      }
     }
     // 生成本视频的片段标识数组
-    const idList = selectedClips.map(f => {
+    idList = selectedClips.map(f => {
       const base = path.parse(path.basename(f)).name;
-      // 只要是 a_0 这种格式就直接用
       if (/^[a-z]+_\d+$/.test(base)) return base;
-      // open 片段或其他，直接用文件名
       return base;
     });
     allVideoIds.push(idList);
-    // 不再生成 txt 文件
-    const outPath = path.join(outputDir, `new_video_${i + 1}.mp4`);
+    // 生成输出文件名：openDir名+inputDir名+时间戳
+    const openName = config.openDir || 'open';
+    const inputName = config.inputDir || 'input';
+    const ts = Date.now();
+    const outFileName = `${openName}_${inputName}_${ts}.mp4`;
+    const outPath = path.join(outputDir, outFileName);
     await concatClips(selectedClips, outPath, outputDir);
     concatBar.tick();
   }
@@ -97,5 +134,4 @@ async function composeVideosWithOpen(numNewVideos = 3, clipsPerVideo = 10) {
   console.log('全部合成完成，片段标识已输出到 output/video_ids.js');
 }
 
-// 参数可自定义
-composeVideosWithOpen(3, 10);
+composeVideosWithOpen();

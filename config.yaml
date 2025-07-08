@@ -1,0 +1,21 @@
+# 是否使用帧级精确分割（true为帧级，false为普通分割+减帧）
+useFrameAccurateSplit: false
+# 场景变化检测阈值，越大越严格（0.3~0.5常用）
+sceneThreshold: 0.4
+# 普通分割时每个片段末尾减去的帧数
+minusFrames: 2
+# 片段输出目录
+clipsDir: clips
+# 输入视频目录
+inputDir: input
+# 开头片段目录
+openDir: open
+# 合成输出目录
+outputDir: output
+# 生成新视频数量
+numNewVideos: 3
+# 每个新视频包含的片段数（不含开头，若设置时长区间则此项无效）
+clipsPerVideo: 10
+# 新视频时长区间（单位：秒），如不需要可注释掉
+minVideoDuration: 20   # 最短60秒
+maxVideoDuration: 30  # 最长180秒

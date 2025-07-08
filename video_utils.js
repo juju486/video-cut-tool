@@ -217,6 +217,25 @@ async function concatClips(clips, outPath, outputDir) {
   fs.unlinkSync(listFile);
 }
 
+// 获取视频片段时长（秒）
+function getClipDuration(filePath) {
+  return new Promise((resolve, reject) => {
+    const { spawn } = require('child_process');
+    const ffprobe = spawn('ffprobe', [
+      '-v', 'error',
+      '-show_entries', 'format=duration',
+      '-of', 'default=noprint_wrappers=1:nokey=1',
+      filePath
+    ]);
+    let data = '';
+    ffprobe.stdout.on('data', chunk => data += chunk);
+    ffprobe.on('close', () => {
+      resolve(parseFloat(data));
+    });
+    ffprobe.on('error', err => reject(err));
+  });
+}
+
 module.exports = {
   getVideoFiles,
   getSceneChangeFrames,
@@ -225,5 +244,6 @@ module.exports = {
   concatClips,
   shuffle,
   getFrameTimeMap,
-  splitVideoByFrameSelect
+  splitVideoByFrameSelect,
+  getClipDuration,
 };
