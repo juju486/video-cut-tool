@@ -236,6 +236,55 @@ function getClipDuration(filePath) {
   });
 }
 
+// 生成或补全 input/alias_map.json
+async function generateOrUpdateAliasMap(inputDir, aliasMapPath) {
+  await fs.ensureDir(inputDir);
+  const videoFiles = fs.readdirSync(inputDir).filter(f => /\.(mp4|mov|avi|mkv)$/i.test(f));
+  let aliasMap = {};
+  if (fs.existsSync(aliasMapPath)) {
+    try {
+      aliasMap = await fs.readJson(aliasMapPath);
+    } catch (e) {
+      aliasMap = {};
+    }
+  }
+  // 反向查找已分配的文件名，避免重复
+  const usedNames = new Set(Object.values(aliasMap));
+  // 生成别名
+  function genAliasArr(n) {
+    const arr = [];
+    const chars = 'abcdefghijklmnopqrstuvwxyz';
+    for (let i = 0; i < n; i++) {
+      let s = '';
+      let x = i;
+      do {
+        s = chars[x % 26] + s;
+        x = Math.floor(x / 26) - 1;
+      } while (x >= 0);
+      arr.push(s);
+    }
+    return arr;
+  }
+  // 补全未分配的
+  let idx = 0;
+  for (const file of videoFiles) {
+    const name = path.parse(file).name;
+    if (!Object.values(aliasMap).includes(name)) {
+      // 找到未用的别名
+      let alias;
+      while (true) {
+        alias = genAliasArr(idx + 1)[idx];
+        if (!aliasMap[alias]) break;
+        idx++;
+      }
+      aliasMap[alias] = name;
+      idx++;
+    }
+  }
+  await fs.writeJson(aliasMapPath, aliasMap, { spaces: 2 });
+  return aliasMap;
+}
+
 module.exports = {
   getVideoFiles,
   getSceneChangeFrames,
@@ -246,4 +295,5 @@ module.exports = {
   getFrameTimeMap,
   splitVideoByFrameSelect,
   getClipDuration,
+  generateOrUpdateAliasMap,
 };

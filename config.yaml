@@ -17,5 +17,16 @@ numNewVideos: 3
 # 每个新视频包含的片段数（不含开头，若设置时长区间则此项无效）
 clipsPerVideo: 10
 # 新视频时长区间（单位：秒），如不需要可注释掉
-minVideoDuration: 20   # 最短60秒
-maxVideoDuration: 30  # 最长180秒
+# minVideoDuration: 20   # 最短60秒
+# maxVideoDuration: 30  # 最长180秒
+# 音频播放速率调整区间
+minAudioRate: 0.90
+maxAudioRate: 1.1
+# 视频片段播放速率调整区间
+minVideoRate: 0.90
+maxVideoRate: 1.1
+# 片段最短和最长时间（单位：秒）
+minClipDuration: 1.5
+maxClipDuration: 5.5
+# 音视频允许最大差值（单位：秒）
+maxAVDiff: 0.2
