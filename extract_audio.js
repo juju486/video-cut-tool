@@ -9,8 +9,8 @@ const aliasMapPath = path.join(inputDir, 'alias_map.json');
 
 async function extractAudio(videoPath, audioPath) {
   return new Promise((resolve, reject) => {
-    // -vn: 不处理视频流，-acodec copy: 直接拷贝音频流
-    const args = ['-i', videoPath, '-vn', '-acodec', 'copy', '-y', audioPath];
+    // -vn: 不处理视频流，-acodec mp3: 转换为MP3格式
+    const args = ['-i', videoPath, '-vn', '-acodec', 'mp3', '-b:a', '128k', '-y', audioPath];
     const ffmpeg = spawn('ffmpeg', args, { stdio: 'inherit' });
     ffmpeg.on('close', code => code === 0 ? resolve() : reject(new Error('ffmpeg error')));
     ffmpeg.on('error', err => reject(err));
@@ -34,6 +34,8 @@ async function getAudioDuration(filePath) {
   });
 }
 
+
+
 (async () => {
   await fs.ensureDir(musicDir);
   // 生成/补全 alias_map.json
@@ -49,17 +51,17 @@ async function getAudioDuration(filePath) {
       console.log(`未找到别名映射，跳过: ${file}`);
       continue;
     }
-    const ext = path.extname(file).toLowerCase();
-    // 先用临时名提取音频
-    const tempAudioPath = path.join(musicDir, `${alias}_temp.aac`);
+    
     const videoPath = path.join(inputDir, file);
+    // 先用临时名提取音频
+    const tempAudioPath = path.join(musicDir, `${alias}_temp.mp3`);
     console.log(`正在提取: ${file} -> ${tempAudioPath}`);
     try {
       await extractAudio(videoPath, tempAudioPath);
       // 获取音频时长
       const audioDuration = await getAudioDuration(tempAudioPath);
       const durationStr = audioDuration.toFixed(1);
-      const audioPath = path.join(musicDir, `${alias}_${durationStr}s.aac`);
+      const audioPath = path.join(musicDir, `${alias}_${durationStr}s.mp3`);
       fs.renameSync(tempAudioPath, audioPath);
       console.log(`完成: ${audioPath}`);
     } catch (e) {

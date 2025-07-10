@@ -30,3 +30,7 @@ minClipDuration: 1.5
 maxClipDuration: 5.5
 # 音视频允许最大差值（单位：秒）
 maxAVDiff: 0.2
+# 片段总时长小于音频时允许调整速率的最大差值（秒）
+videoShorterAudioMaxDiff: 2
+# 片段总时长大于音频时允许调整速率的最大差值（秒）
+videoLongerAudioMaxDiff: 2

@@ -25,6 +25,8 @@ const maxVideoRate = config.maxVideoRate || 1.05;
 const minClipDuration = config.minClipDuration || 1.5;
 const maxClipDuration = config.maxClipDuration || 30;
 const maxAVDiff = config.maxAVDiff || 0.2;
+const videoShorterAudioMaxDiff = config.videoShorterAudioMaxDiff || 2;
+const videoLongerAudioMaxDiff = config.videoLongerAudioMaxDiff || 2;
 
 const minLastClip = 1.5; // 最后一个片段不能少于1.5秒
 
@@ -93,10 +95,11 @@ async function concatClipsWithAudio(clips, audioPath, outPath, outputDir, audioR
       '-i', finalVideo,
       '-i', audioPath,
       '-filter_complex',
-      `[1:a]atempo=${audioRate}[a];[0:v]setpts=${1/videoRates[0]}*PTS[v]`,
+      `[1:a]atempo=${audioRate.toFixed(6)}[a];[0:v]setpts=${(1/videoRates[0]).toFixed(6)}*PTS[v]`,
       '-map', '[v]',
       '-map', '[a]',
       '-shortest',
+      '-avoid_negative_ts', 'make_zero',
       '-y',
       tempOut
     ];
@@ -118,6 +121,7 @@ async function concatClipsWithAudio(clips, audioPath, outPath, outputDir, audioR
     const args = [
       '-i', tempOut,
       '-t', audioDuration.toString(),
+      '-avoid_negative_ts', 'make_zero',
       '-c', 'copy',
       '-y', tempCutted
     ];
@@ -203,8 +207,9 @@ async function composeVideosWithOpen() {
     const audioIdx = tryIndex % musicFiles.length;
     const audioPath = path.join(musicDir, musicFiles[audioIdx]);
     const audioDuration = await getAudioDuration(audioPath);
+    console.log(`正在生成第${successCount + 1}个视频，使用音频: ${musicFiles[audioIdx]}`);
     // 2. 精确选片段
-    let selectedClips = [], selectedDur = 0, order, videoRates, audioRate;
+    let selectedClips = [], selectedDur = 0, order, videoRates;
     let tryCount = 0;
     let found = false;
     do {
@@ -229,62 +234,42 @@ async function composeVideosWithOpen() {
       let diff = tmpDur - audioDuration;
       console.log(`音频时长: ${audioDuration.toFixed(2)}s, 片段总时长: ${tmpDur.toFixed(2)}s, 差值: ${diff.toFixed(2)}s`);
       if (diff < -maxAVDiff) {
-        if (Math.abs(diff) > 1.5) {
-          console.log('片段总时长小于音频，差值大于1.5s，继续选片段...');
+        if (Math.abs(diff) > videoShorterAudioMaxDiff) {
+          console.log(`片段总时长小于音频，差值大于${videoShorterAudioMaxDiff}s，继续选片段...`);
           continue;
         } else {
-          let aRate = tmpDur / audioDuration;
-          if (aRate >= minAudioRate && aRate <= maxAudioRate) {
-            console.log(`片段总时长小于音频，差值小于1.5s，调整音频速率为: ${aRate.toFixed(4)}`);
-            audioRate = aRate;
-            videoRates = [1.0];
+          // 只允许调整视频速率
+          let vRate = tmpDur / audioDuration;
+          if (vRate >= minVideoRate && vRate <= maxVideoRate) {
+            console.log(`片段总时长小于音频，差值小于${videoShorterAudioMaxDiff}s，调整视频速率为: ${vRate.toFixed(4)}`);
+            videoRates = [vRate];
             found = true;
-          } else {
-            aRate = minAudioRate;
-            let newAudioLen = audioDuration * aRate;
-            let remain = tmpDur - newAudioLen;
-            let vRate = 1.0;
-            if (Math.abs(remain) <= maxAVDiff) {
-              vRate = tmpDur / newAudioLen;
-              if (vRate >= minVideoRate && vRate <= maxVideoRate) {
-                console.log(`片段总时长小于音频，音频速率调整到最小${aRate.toFixed(4)}，视频速率调整为: ${vRate.toFixed(4)}`);
-                audioRate = aRate;
-                videoRates = [vRate];
-                found = true;
-              }
-            }
           }
         }
       } else if (diff > maxAVDiff) {
-        if (diff > 2) {
-          console.log('片段总时长大于音频，差值大于2s，重新选片段...');
+        if (diff > videoLongerAudioMaxDiff) {
+          console.log(`片段总时长大于音频，差值大于${videoLongerAudioMaxDiff}s，重新选片段...`);
           continue;
         } else {
-          let aRate = 1.0;
+          // 差值小于videoLongerAudioMaxDiff，调整视频速率
           let vRate = audioDuration / tmpDur;
           if (vRate >= minVideoRate && vRate <= maxVideoRate) {
-            console.log(`片段总时长大于音频，差值小于2s，调整视频速率为: ${vRate.toFixed(4)}`);
-            audioRate = aRate;
+            console.log(`片段总时长大于音频，差值小于${videoLongerAudioMaxDiff}s，调整视频速率为: ${vRate.toFixed(4)}`);
             videoRates = [vRate];
             found = true;
           } else {
-            vRate = maxVideoRate;
-            let newVideoLen = tmpDur * vRate;
-            let remain = newVideoLen - audioDuration;
-            if (Math.abs(remain) <= maxAVDiff) {
-              aRate = newVideoLen / audioDuration;
-              if (aRate >= minAudioRate && aRate <= maxAudioRate) {
-                console.log(`片段总时长大于音频，视频速率调整到最大${vRate.toFixed(4)}，音频速率调整为: ${aRate.toFixed(4)}`);
-                audioRate = aRate;
-                videoRates = [vRate];
-                found = true;
-              }
+            // 只允许裁剪视频
+            let lastClipDur = await getClipDuration(tmpClips[tmpClips.length - 1]);
+            if (lastClipDur - diff >= minClipDuration) {
+              console.log(`片段总时长大于音频，速率不在区间，裁剪最后片段，裁剪后时长: ${(lastClipDur - diff).toFixed(2)}s`);
+              tmpClips.cutLastTo = lastClipDur - diff;
+              videoRates = [1.0];
+              found = true;
             }
           }
         }
       } else {
         console.log('片段总时长与音频时长差值在允许范围内，直接裁剪多余部分');
-        audioRate = 1.0;
         videoRates = [1.0];
         found = true;
       }
@@ -295,7 +280,7 @@ async function composeVideosWithOpen() {
       }
     } while ((!found || usedOrders.has(order)) && tryCount < 100);
     usedOrders.add(order);
-    if (!found || !selectedClips || selectedClips.length === 0) {
+    if (!selectedClips || selectedClips.length === 0) {
       if (tryCount >= 100) {
         console.log(`第${successCount+1}个视频重试已达最大次数（100），跳过。`);
       }
@@ -319,17 +304,16 @@ async function composeVideosWithOpen() {
     // 先用临时名合成
     const tempOutName = `${openName}_${inputName}_temp_${successCount}.mp4`;
     const tempOutPath = path.join(batchDir, tempOutName);
-    await concatClipsWithAudio(selectedClips, audioPath, tempOutPath, batchDir, audioRate, videoRates);
+    await concatClipsWithAudio(selectedClips, audioPath, tempOutPath, batchDir, 1.0, videoRates);
     // 获取最终成品视频的时长
     const finalVideoDuration = await getClipDuration(tempOutPath);
     const durationStr = finalVideoDuration.toFixed(1);
     const audioBase = path.parse(musicFiles[audioIdx]).name;
-    const outFileName = `${openName}_${inputName}_${durationStr}s_${audioBase}.mp4`;
+    const outFileName = `${openName}_${inputName}_${durationStr}s_${audioBase}_${successCount + 1}.mp4`;
     const outPath = path.join(batchDir, outFileName);
     fs.renameSync(tempOutPath, outPath);
     concatBar.tick();
     successCount++;
-    tryIndex++;
   }
   // 输出到 js 文件
   const jsOut = `// 每个视频的片段标识\nconst videoIds = ${JSON.stringify(allVideoIds, null, 2)};\nmodule.exports = { videoIds };\n`;

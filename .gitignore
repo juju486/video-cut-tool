@@ -1,5 +1,8 @@
 # 忽略 node 依赖
 node_modules/
+output/
+input/
+music/
 
 # 忽略所有常见视频文件
 *.mp4
