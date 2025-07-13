@@ -2,6 +2,7 @@ const fs = require('fs-extra');
 const path = require('path');
 const { spawn } = require('child_process');
 const ProgressBar = require('progress');
+const { getAliasKey } = require('./alias_utils');
 
 function getVideoFiles(dir) {
   return fs.readdirSync(dir).filter(f => /\.(mp4|mov|avi|mkv)$/i.test(f));
@@ -193,7 +194,24 @@ async function splitVideoByFrameSelect(filePath, sceneFrames, alias, clipsDir, p
 async function concatClips(clips, outPath, outputDir) {
   const bar = new ProgressBar('拼接进度 [:bar] :current/:total', { total: 1, width: 30 });
   const listFile = path.join(outputDir, 'concat_list.txt');
-  fs.writeFileSync(listFile, clips.map(f => `file '${f.replace(/'/g, "'\\''")}'`).join('\n'));
+  
+  // 检查所有片段文件是否存在
+  for (const clip of clips) {
+    if (!fs.existsSync(clip)) {
+      throw new Error(`片段文件不存在: ${clip}`);
+    }
+  }
+  
+  // 使用绝对路径并正确处理路径分隔符
+  const listContent = clips.map(f => {
+    const absolutePath = path.resolve(f);
+    // 在Windows上使用正斜杠，避免路径问题
+    const normalizedPath = absolutePath.replace(/\\/g, '/');
+    return `file '${normalizedPath}'`;
+  }).join('\n');
+  
+  fs.writeFileSync(listFile, listContent);
+  
   await new Promise((resolve, reject) => {
     const args = [
       '-y',
@@ -203,18 +221,33 @@ async function concatClips(clips, outPath, outputDir) {
       '-c', 'copy',
       outPath
     ];
-    const ffmpeg = spawn('ffmpeg', args);
-    ffmpeg.stderr.on('data', chunk => process.stderr.write(chunk));
-    ffmpeg.stdout.on('data', chunk => process.stdout.write(chunk));
+    const ffmpeg = spawn('ffmpeg', args, { stdio: 'pipe' });
+    
+    let stderrData = '';
+    ffmpeg.stderr.on('data', chunk => {
+      stderrData += chunk.toString();
+    });
+    
     ffmpeg.on('close', code => {
       bar.tick();
-      resolve();
+      if (code === 0) {
+        resolve();
+      } else {
+        console.error('FFmpeg concat 错误输出:', stderrData);
+        reject(new Error(`ffmpeg concat error (code: ${code}): ${stderrData}`));
+      }
     });
+    
     ffmpeg.on('error', err => {
+      console.error('FFmpeg concat 进程错误:', err);
       reject(err);
     });
   });
-  fs.unlinkSync(listFile);
+  
+  // 清理临时文件
+  if (fs.existsSync(listFile)) {
+    fs.unlinkSync(listFile);
+  }
 }
 
 // 获取视频片段时长（秒）
@@ -236,10 +269,25 @@ function getClipDuration(filePath) {
   });
 }
 
-// 生成或补全 input/alias_map.json
+function genShortAliasArr(n) {
+  const arr = [];
+  const chars = 'abcdefghijklmnopqrstuvwxyz';
+  for (let i = 0; i < n; i++) {
+    let s = '';
+    let x = i;
+    do {
+      s = chars[x % 26] + s;
+      x = Math.floor(x / 26) - 1;
+    } while (x >= 0);
+    arr.push(s);
+  }
+  return arr;
+}
+
 async function generateOrUpdateAliasMap(inputDir, aliasMapPath) {
   await fs.ensureDir(inputDir);
   const videoFiles = fs.readdirSync(inputDir).filter(f => /\.(mp4|mov|avi|mkv)$/i.test(f));
+  videoFiles.sort(); // 按文件名排序，保证分配一致
   let aliasMap = {};
   if (fs.existsSync(aliasMapPath)) {
     try {
@@ -248,37 +296,35 @@ async function generateOrUpdateAliasMap(inputDir, aliasMapPath) {
       aliasMap = {};
     }
   }
-  // 反向查找已分配的文件名，避免重复
-  const usedNames = new Set(Object.values(aliasMap));
-  // 生成别名
-  function genAliasArr(n) {
-    const arr = [];
-    const chars = 'abcdefghijklmnopqrstuvwxyz';
-    for (let i = 0; i < n; i++) {
-      let s = '';
-      let x = i;
-      do {
-        s = chars[x % 26] + s;
-        x = Math.floor(x / 26) - 1;
-      } while (x >= 0);
-      arr.push(s);
-    }
-    return arr;
-  }
-  // 补全未分配的
-  let idx = 0;
+  // 反查已分配的短别名，避免重复
+  const usedShorts = new Set(Object.keys(aliasMap).map(k => k.split('_').pop()));
+  const dirKey = (() => {
+    let d = path.basename(inputDir.replace(/[\\/]+$/, ''));
+    if (d === '未分析') d = path.basename(path.dirname(inputDir));
+    return d;
+  })();
+  let shortIdx = 0;
   for (const file of videoFiles) {
-    const name = path.parse(file).name;
-    if (!Object.values(aliasMap).includes(name)) {
-      // 找到未用的别名
-      let alias;
-      while (true) {
-        alias = genAliasArr(idx + 1)[idx];
-        if (!aliasMap[alias]) break;
-        idx++;
+    const baseName = path.parse(file).name;
+    // 检查是否已分配
+    let found = false;
+    for (const [k, v] of Object.entries(aliasMap)) {
+      if (v === baseName && k.startsWith(dirKey + '_')) {
+        found = true;
+        break;
       }
-      aliasMap[alias] = name;
-      idx++;
+    }
+    if (!found) {
+      // 分配新短别名
+      let shortAlias;
+      while (true) {
+        shortAlias = genShortAliasArr(shortIdx + 1)[shortIdx];
+        if (!usedShorts.has(shortAlias)) break;
+        shortIdx++;
+      }
+      aliasMap[`${dirKey}_${shortAlias}`] = baseName;
+      usedShorts.add(shortAlias);
+      shortIdx++;
     }
   }
   await fs.writeJson(aliasMapPath, aliasMap, { spaces: 2 });

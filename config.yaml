@@ -5,31 +5,31 @@ sceneThreshold: 0.4
 # 普通分割时每个片段末尾减去的帧数
 minusFrames: 2
 # 片段输出目录
-clipsDir: clips
+clipsDir: clips/9001
 # 输入视频目录
-inputDir: input
+inputDir: input/9001
 # 开头片段目录
 openDir: open
+# 音频文件目录
+
+musicDir: music/9001
+# 音频提取输出目录
+audioExtractDir: music/9001
 # 合成输出目录
-outputDir: output
+outputDir: output/9001
 # 生成新视频数量
-numNewVideos: 3
-# 每个新视频包含的片段数（不含开头，若设置时长区间则此项无效）
-clipsPerVideo: 10
-# 新视频时长区间（单位：秒），如不需要可注释掉
-# minVideoDuration: 20   # 最短60秒
-# maxVideoDuration: 30  # 最长180秒
-# 音频播放速率调整区间
-minAudioRate: 0.90
-maxAudioRate: 1.1
+numNewVideos: 10
+
 # 视频片段播放速率调整区间
 minVideoRate: 0.90
 maxVideoRate: 1.1
 # 片段最短和最长时间（单位：秒）
-minClipDuration: 1.5
-maxClipDuration: 5.5
+minClipDuration: 1
+maxClipDuration: 4
 # 音视频允许最大差值（单位：秒）
 maxAVDiff: 0.2
+# FFmpeg合成超时时间（单位：秒）
+ffmpegTimeout: 120
 # 片段总时长小于音频时允许调整速率的最大差值（秒）
 videoShorterAudioMaxDiff: 2
 # 片段总时长大于音频时允许调整速率的最大差值（秒）
