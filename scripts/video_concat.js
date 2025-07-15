@@ -57,6 +57,35 @@ async function concatClipsWithAudio(clips, audioPath, outPath, outputDir, audioR
   await concatClips(clips, tempVideo, outputDir);
   // 如果需要裁剪最后一个片段
   let finalVideo = tempVideo;
+  // 新增：调整视频速率
+  if (videoRates && videoRates[0] !== 1.0) {
+    const speededVideo = path.join(outputDir, `speeded_${Date.now()}.mp4`);
+    const vRate = videoRates[0];
+    await new Promise((resolve, reject) => {
+      const args = [
+        '-i', finalVideo,
+        '-filter:v', `setpts=${(1/vRate).toFixed(6)}*PTS`,
+        '-an',
+        '-y',
+        speededVideo
+      ];
+      const { spawn } = require('child_process');
+      const ffmpeg = spawn('ffmpeg', args, { stdio: 'pipe' });
+      let stderrData = '';
+      ffmpeg.stderr.on('data', chunk => { stderrData += chunk.toString(); });
+      ffmpeg.on('close', code => {
+        if (code === 0) {
+          resolve();
+        } else {
+          console.error('FFmpeg 变速错误输出:', stderrData);
+          reject(new Error('ffmpeg speed error'));
+        }
+      });
+      ffmpeg.on('error', err => reject(err));
+    });
+    fs.unlinkSync(finalVideo);
+    finalVideo = speededVideo;
+  }
   if (clips.cutLastTo) {
     // 裁剪最后一个片段
     progressCb && progressCb('[2/4] 正在裁剪最后片段...');
@@ -71,13 +100,13 @@ async function concatClipsWithAudio(clips, audioPath, outPath, outputDir, audioR
     // 用ffmpeg裁剪最后一段
     await new Promise((resolve, reject) => {
       // 检查输入文件是否存在
-      if (!fs.existsSync(tempVideo)) {
-        reject(new Error(`临时视频文件不存在: ${tempVideo}`));
+      if (!fs.existsSync(finalVideo)) {
+        reject(new Error(`临时视频文件不存在: ${finalVideo}`));
         return;
       }
 
       const args = [
-        '-i', tempVideo,
+        '-i', finalVideo,
         '-ss', lastStart.toString(),
         '-t', lastLen.toString(),
         '-c', 'copy',
@@ -464,11 +493,31 @@ async function composeVideosWithOpen() {
     }
   }
   const usedOrders = new Set();
+  // 音频轮换记忆文件
+  const lastMusicIdxPath = path.join(outputDir, 'last_music_idx.json');
+  let lastMusicIdx = 0;
+  let lastInputDir = '';
+  let lastMusicDir = '';
+  if (fs.existsSync(lastMusicIdxPath)) {
+    try {
+      const lastData = JSON.parse(fs.readFileSync(lastMusicIdxPath, 'utf8'));
+      lastInputDir = lastData.inputDir;
+      lastMusicDir = lastData.musicDir;
+      if (lastInputDir === config.inputDir && lastMusicDir === config.musicDir) {
+        lastMusicIdx = (lastData.lastMusicIdx || 0) + 1;
+      } else {
+        lastMusicIdx = 0;
+      }
+    } catch (e) {
+      lastMusicIdx = 0;
+    }
+  }
+  let musicStartIdx = lastMusicIdx % musicFiles.length;
   while (successCount < numNewVideos) {
     const startTime = Date.now();
     concatBar.tick(); // 每次开始处理一个新视频就刷新进度条
     // 1. 选音频
-    const audioIdx = successCount % musicFiles.length;
+    const audioIdx = (musicStartIdx + successCount) % musicFiles.length;
     const audioPath = path.join(musicDir, musicFiles[audioIdx]);
 
     // 检查音频文件是否存在
@@ -656,6 +705,13 @@ async function composeVideosWithOpen() {
   fs.writeFileSync(path.join(batchDir, 'video_ids.js'), jsOut);
   console.log(`全部合成完成，片段标识已输出到 ${batchDir}/video_ids.js`);
   logToFile(`全部合成完成，片段标识已输出到 ${batchDir}/video_ids.js`);
+  // 记录本轮最后一次用到的音频索引
+  const newLastIdx = (musicStartIdx + successCount - 1 + musicFiles.length) % musicFiles.length;
+  fs.writeFileSync(lastMusicIdxPath, JSON.stringify({
+    inputDir: config.inputDir,
+    musicDir: config.musicDir,
+    lastMusicIdx: newLastIdx
+  }, null, 2));
 
   // 删除output及子文件夹下所有以temp开头的临时视频
   function deleteTempFiles(dir) {

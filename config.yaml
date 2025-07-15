@@ -27,7 +27,7 @@ maxVideoRate: 1.1
 minClipDuration: 1
 maxClipDuration: 4
 # 音视频允许最大差值（单位：秒）
-maxAVDiff: 0.2
+maxAVDiff: 0.1
 # FFmpeg合成超时时间（单位：秒）
 ffmpegTimeout: 120
 # 片段总时长小于音频时允许调整速率的最大差值（秒）
