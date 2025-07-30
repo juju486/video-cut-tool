@@ -4,21 +4,25 @@ useFrameAccurateSplit: false
 sceneThreshold: 0.4
 # 普通分割时每个片段末尾减去的帧数
 minusFrames: 2
-# 片段输出目录
-clipsDir: clips/9001
-# 输入视频目录
-inputDir: input/9001
+
 # 开头片段目录
 openDir: open
-# 音频文件目录
 
-musicDir: music/9001
+# 片段输出目录
+clipsDir: clips/9001s2
+# 输入视频目录
+inputDir: input/9001s2
+# 音频文件目录
+musicDir: music/9001s2
 # 音频提取输出目录
-audioExtractDir: music/9001
+audioExtractDir: music/9001s2
 # 合成输出目录
-outputDir: output/9001
+outputDir: output/9001s2
+
+# 视频导出文件名前缀
+videoNamePrefix: myvideo
 # 生成新视频数量
-numNewVideos: 10
+numNewVideos: 50
 
 # 视频片段播放速率调整区间
 minVideoRate: 0.90

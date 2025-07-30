@@ -24,6 +24,7 @@ const maxAVDiff = config.maxAVDiff || 0.2;
 const ffmpegTimeout = (config.ffmpegTimeout || 120) * 1000; // ms
 const videoShorterAudioMaxDiff = config.videoShorterAudioMaxDiff || 2;
 const videoLongerAudioMaxDiff = config.videoLongerAudioMaxDiff || 2;
+const videoNamePrefix = config.videoNamePrefix || 'myvideo';
 
 // 获取音频文件列表
 function getMusicFiles() {
@@ -465,7 +466,7 @@ async function composeVideosWithOpen() {
     fs.appendFileSync(logPath, `[${new Date().toLocaleString()}] ${msg}\n`);
   }
   // 记录所有视频的片段标识
-  const allVideoIds = [];
+  const allVideoIdsObj = {};
   let successCount = 0;
   let tryIndex = 0;
   let totalRetry = 0;
@@ -630,12 +631,23 @@ async function composeVideosWithOpen() {
       if (/^[a-z]+_\d+$/.test(base)) return base;
       return base;
     });
-    allVideoIds.push(idList);
-    // 生成输出文件名：openDir名+inputDir名+视频时长+音频文件名
-    const openName = (config.openDir || 'open').replace(/[\\/]/g, '_');
-    const inputName = (config.inputDir || 'input').replace(/[\\/]/g, '_');
+    // 生成输出文件名：前缀+日期（年月日）+编号
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = (now.getMonth() + 1).toString().padStart(2, '0');
+    const d = now.getDate().toString().padStart(2, '0');
+    const dateStr = `${y}${m}${d}`;
+    // 统计当前 batchDir 下已存在的同前缀同日期视频数量，编号递增
+    let existCount = 0;
+    if (fs.existsSync(batchDir)) {
+      const existFiles = fs.readdirSync(batchDir).filter(f => f.startsWith(`${videoNamePrefix}${dateStr}_`) && f.endsWith('.mp4'));
+      existCount = existFiles.length;
+    }
+    const videoIdx = existCount + 1;
+    const outFileName = `${videoNamePrefix}${dateStr}_${videoIdx}.mp4`;
+    const outPath = path.join(batchDir, outFileName);
     // 先用临时名合成
-    const tempOutName = `${openName}_${inputName}_temp_${successCount}.mp4`;
+    const tempOutName = `${videoNamePrefix}${dateStr}_temp_${videoIdx}.mp4`;
     const tempOutPath = path.join(batchDir, tempOutName);
     try {
       // 检查选中的片段文件
@@ -661,12 +673,6 @@ async function composeVideosWithOpen() {
       await concatClipsWithAudio(selectedClips, audioPath, tempOutPath, batchDir, 1.0, videoRates,
         msg => concatBar.interrupt(`第${successCount + 1}个视频 ${msg}`)
       );
-      // 获取最终成品视频的时长
-      const finalVideoDuration = await getClipDuration(tempOutPath);
-      const durationStr = finalVideoDuration.toFixed(1);
-      const audioBase = path.parse(musicFiles[audioIdx]).name;
-      const outFileName = `${openName}_${inputName}_${durationStr}s_${audioBase}_${successCount + 1}.mp4`;
-      const outPath = path.join(batchDir, outFileName);
       fs.renameSync(tempOutPath, outPath);
       const endTime = Date.now();
       const cost = ((endTime - startTime) / 1000).toFixed(2);
@@ -677,6 +683,8 @@ async function composeVideosWithOpen() {
       });
       concatBar.interrupt(`第${successCount + 1}个视频合成完成: ${outFileName}，耗时${cost}秒`);
       logToFile(`第${successCount + 1}个视频合成完成: ${outFileName}，耗时${cost}秒`);
+      // 记录到对象
+      allVideoIdsObj[outFileName] = { ids: idList, music: musicFiles[audioIdx] };
       successCount++;
     } catch (error) {
       console.error(`第${successCount + 1}个视频合成失败:`, error.message);
@@ -700,8 +708,8 @@ async function composeVideosWithOpen() {
       }
     }
   }
-  // 输出到 js 文件
-  const jsOut = `// 每个视频的片段标识\nconst videoIds = ${JSON.stringify(allVideoIds, null, 2)};\nmodule.exports = { videoIds }\n`;
+  // 输出到 js 文件（对象格式）
+  const jsOut = `// 每个视频的片段标识\nconst videoIds = ${JSON.stringify(allVideoIdsObj, null, 2)};\nmodule.exports = { videoIds }\n`;
   fs.writeFileSync(path.join(batchDir, 'video_ids.js'), jsOut);
   console.log(`全部合成完成，片段标识已输出到 ${batchDir}/video_ids.js`);
   logToFile(`全部合成完成，片段标识已输出到 ${batchDir}/video_ids.js`);
