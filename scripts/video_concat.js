@@ -25,6 +25,9 @@ const ffmpegTimeout = (config.ffmpegTimeout || 120) * 1000; // ms
 const videoShorterAudioMaxDiff = config.videoShorterAudioMaxDiff || 2;
 const videoLongerAudioMaxDiff = config.videoLongerAudioMaxDiff || 2;
 const videoNamePrefix = config.videoNamePrefix || 'myvideo';
+// 音频长度控制参数
+const minAudioDuration = config.minAudioDuration || 30;  // 最小音频时长(秒)
+const maxAudioDuration = config.maxAudioDuration || 180; // 最大音频时长(秒)
 
 // 获取音频文件列表
 function getMusicFiles() {
@@ -517,21 +520,45 @@ async function composeVideosWithOpen() {
   while (successCount < numNewVideos) {
     const startTime = Date.now();
     concatBar.tick(); // 每次开始处理一个新视频就刷新进度条
-    // 1. 选音频
-    const audioIdx = (musicStartIdx + successCount) % musicFiles.length;
-    const audioPath = path.join(musicDir, musicFiles[audioIdx]);
+    // 1. 选音频：确保音频时长在指定范围内
+    let audioPath = null;
+    let audioDuration = 0;
+    let validAudioFound = false;
+    let audioAttempts = 0;
+    const maxAudioAttempts = musicFiles.length; // 最大尝试次数为音频文件总数
 
-    // 检查音频文件是否存在
-    if (!fs.existsSync(audioPath)) {
-      console.error(`音频文件不存在: ${audioPath}`);
-      logToFile(`音频文件不存在: ${audioPath}`);
+    while (!validAudioFound && audioAttempts < maxAudioAttempts) {
+      const audioIdx = (musicStartIdx + successCount + audioAttempts) % musicFiles.length;
+      audioPath = path.join(musicDir, musicFiles[audioIdx]);
+
+      // 检查音频文件是否存在
+      if (!fs.existsSync(audioPath)) {
+        console.error(`音频文件不存在: ${audioPath}`);
+        logToFile(`音频文件不存在: ${audioPath}`);
+        audioAttempts++;
+        continue;
+      }
+
+      audioDuration = await getAudioDuration(audioPath);
+      
+      // 检查音频时长是否在有效范围内
+      if (audioDuration >= minAudioDuration && audioDuration <= maxAudioDuration) {
+        validAudioFound = true;
+        console.log(`正在生成第${successCount + 1}个视频，使用音频: ${musicFiles[audioIdx]}，时长: ${audioDuration.toFixed(2)}s`);
+        logToFile(`正在生成第${successCount + 1}个视频，使用音频: ${musicFiles[audioIdx]}，时长: ${audioDuration.toFixed(2)}s`);
+      } else {
+        console.log(`音频 ${musicFiles[audioIdx]} 时长 ${audioDuration.toFixed(2)}s 不在范围内 [${minAudioDuration}s-${maxAudioDuration}s]，尝试下一个`);
+        logToFile(`音频 ${musicFiles[audioIdx]} 时长 ${audioDuration.toFixed(2)}s 不在范围内 [${minAudioDuration}s-${maxAudioDuration}s]，尝试下一个`);
+        audioAttempts++;
+      }
+    }
+
+    if (!validAudioFound) {
+      console.error(`未找到符合时长要求的音频文件，跳过当前视频生成`);
+      logToFile(`未找到符合时长要求的音频文件，跳过当前视频生成`);
       successCount++;
       continue;
     }
-
-    const audioDuration = await getAudioDuration(audioPath);
-    console.log(`正在生成第${successCount + 1}个视频，使用音频: ${musicFiles[audioIdx]}`);
-    logToFile(`正在生成第${successCount + 1}个视频，使用音频: ${musicFiles[audioIdx]}`);
     // 2. 精确选片段
     let selectedClips = [], selectedDur = 0, order, videoRates;
     let tryCount = 0;
