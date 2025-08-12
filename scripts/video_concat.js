@@ -493,8 +493,43 @@ async function composeVideosWithOpen() {
   const logPath = path.join(batchDir, 'batch_log.txt');
   function logToFile(...args) {
     const msg = args.map(x => (typeof x === 'string' ? x : JSON.stringify(x))).join(' ');
-    fs.appendFileSync(logPath, `[${new Date().toLocaleString()}] ${msg}\n`);
+    fs.appendFileSync(logPath, `[${new Date().toLocaleString()}] ${msg}
+`);
   }
+  // 定义合成记录文件路径
+  const synthesisLogPath = path.join(batchDir, 'synthesis_log.json');
+
+  // 初始化记录文件（如果不存在）
+  if (!fs.existsSync(synthesisLogPath)) {
+    fs.writeFileSync(synthesisLogPath, JSON.stringify({}, null, 2));
+  }
+
+  // 每次合成成功后更新记录文件
+  function updateSynthesisLog(videoName, clips, audio) {
+    // 读取现有记录
+    let logData = {};
+    if (fs.existsSync(synthesisLogPath)) {
+      try {
+        logData = JSON.parse(fs.readFileSync(synthesisLogPath, 'utf8'));
+      } catch (e) {
+        console.error('读取合成记录文件失败:', e.message);
+        logData = {};
+      }
+    }
+
+    // 添加新记录
+    logData[videoName] = {
+      clips: clips,
+      audio: audio,
+      timestamp: new Date().toISOString()
+    };
+
+    // 写入更新后的记录
+    fs.writeFileSync(synthesisLogPath, JSON.stringify(logData, null, 2));
+    console.log(`已更新合成记录: ${synthesisLogPath}`);
+    logToFile(`已更新合成记录: ${synthesisLogPath}`);
+  }
+
   // 记录所有视频的片段标识
   const allVideoIdsObj = {};
   let successCount = 0;
@@ -748,39 +783,6 @@ async function composeVideosWithOpen() {
       }
     }
   }
-  // 定义合成记录文件路径
-const synthesisLogPath = path.join(batchDir, 'synthesis_log.json');
-
-// 初始化记录文件（如果不存在）
-if (!fs.existsSync(synthesisLogPath)) {
-  fs.writeFileSync(synthesisLogPath, JSON.stringify({}, null, 2));
-}
-
-// 每次合成成功后更新记录文件
-function updateSynthesisLog(videoName, clips, audio) {
-  // 读取现有记录
-  let logData = {};
-  if (fs.existsSync(synthesisLogPath)) {
-    try {
-      logData = JSON.parse(fs.readFileSync(synthesisLogPath, 'utf8'));
-    } catch (e) {
-      console.error('读取合成记录文件失败:', e.message);
-      logData = {};
-    }
-  }
-
-  // 添加新记录
-  logData[videoName] = {
-    clips: clips,
-    audio: audio,
-    timestamp: new Date().toISOString()
-  };
-
-  // 写入更新后的记录
-  fs.writeFileSync(synthesisLogPath, JSON.stringify(logData, null, 2));
-  console.log(`已更新合成记录: ${synthesisLogPath}`);
-  logToFile(`已更新合成记录: ${synthesisLogPath}`);
-}
 
 // 输出到 js 文件（对象格式） - 保留原有功能
 const jsOut = `// 每个视频的片段标识
