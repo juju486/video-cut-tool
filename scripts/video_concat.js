@@ -525,6 +525,7 @@ async function composeVideosWithOpen() {
     let audioDuration = 0;
     let validAudioFound = false;
     let audioAttempts = 0;
+    let audioIdx = 0; // 在循环外部声明audioIdx
     const maxAudioAttempts = musicFiles.length; // 最大尝试次数为音频文件总数
 
     while (!validAudioFound && audioAttempts < maxAudioAttempts) {
