@@ -28,10 +28,37 @@ const videoNamePrefix = config.videoNamePrefix || 'myvideo';
 // 音频长度控制参数
 const minAudioDuration = config.minAudioDuration || 30;  // 最小音频时长(秒)
 const maxAudioDuration = config.maxAudioDuration || 180; // 最大音频时长(秒)
+const enableAudioFilter = config.enableAudioFilter !== undefined ? config.enableAudioFilter : true;
+
+// 确定实际使用的音频目录
+let actualMusicDir = musicDir;
+if (enableAudioFilter) {
+  actualMusicDir = path.join(musicDir, `${minAudioDuration}-${maxAudioDuration}`);
+  console.log(`启用音频预筛选，使用音频目录: ${actualMusicDir}`);
+} else {
+  console.log(`未启用音频预筛选，使用原始音频目录: ${musicDir}`);
+}
 
 // 获取音频文件列表
 function getMusicFiles() {
-  return fs.readdirSync(musicDir).filter(f => /\.(aac|mp3|wav|m4a)$/i.test(f)).sort();
+  // 检查实际音频目录是否存在
+  if (!fs.existsSync(actualMusicDir)) {
+    console.error(`音频目录不存在: ${actualMusicDir}`);
+    if (enableAudioFilter) {
+      console.error('请先运行 filter_audio.js 脚本筛选音频文件');
+    }
+    process.exit(1);
+  }
+
+  const files = fs.readdirSync(actualMusicDir).filter(f => /\.(aac|mp3|wav|m4a)$/i.test(f)).sort();
+  if (files.length === 0) {
+    console.error(`音频目录中没有找到音频文件: ${actualMusicDir}`);
+    if (enableAudioFilter) {
+      console.error('可能是筛选条件过于严格，没有符合条件的音频文件');
+    }
+    process.exit(1);
+  }
+  return files;
 }
 
 // 获取音频时长
@@ -520,46 +547,27 @@ async function composeVideosWithOpen() {
   while (successCount < numNewVideos) {
     const startTime = Date.now();
     concatBar.tick(); // 每次开始处理一个新视频就刷新进度条
-    // 1. 选音频：确保音频时长在指定范围内
+    // 1. 选音频：从预筛选的音频目录中选择
     let audioPath = null;
     let audioDuration = 0;
-    let validAudioFound = false;
-    let audioAttempts = 0;
-    let audioIdx = 0; // 在循环外部声明audioIdx
-    const maxAudioAttempts = musicFiles.length; // 最大尝试次数为音频文件总数
+    let audioIdx = 0;
 
-    while (!validAudioFound && audioAttempts < maxAudioAttempts) {
-      const audioIdx = (musicStartIdx + successCount + audioAttempts) % musicFiles.length;
-      audioPath = path.join(musicDir, musicFiles[audioIdx]);
+    // 计算音频索引
+    audioIdx = (musicStartIdx + successCount) % musicFiles.length;
+    audioPath = path.join(actualMusicDir, musicFiles[audioIdx]);
 
-      // 检查音频文件是否存在
-      if (!fs.existsSync(audioPath)) {
-        console.error(`音频文件不存在: ${audioPath}`);
-        logToFile(`音频文件不存在: ${audioPath}`);
-        audioAttempts++;
-        continue;
-      }
-
-      audioDuration = await getAudioDuration(audioPath);
-      
-      // 检查音频时长是否在有效范围内
-      if (audioDuration >= minAudioDuration && audioDuration <= maxAudioDuration) {
-        validAudioFound = true;
-        console.log(`正在生成第${successCount + 1}个视频，使用音频: ${musicFiles[audioIdx]}，时长: ${audioDuration.toFixed(2)}s`);
-        logToFile(`正在生成第${successCount + 1}个视频，使用音频: ${musicFiles[audioIdx]}，时长: ${audioDuration.toFixed(2)}s`);
-      } else {
-        console.log(`音频 ${musicFiles[audioIdx]} 时长 ${audioDuration.toFixed(2)}s 不在范围内 [${minAudioDuration}s-${maxAudioDuration}s]，尝试下一个`);
-        logToFile(`音频 ${musicFiles[audioIdx]} 时长 ${audioDuration.toFixed(2)}s 不在范围内 [${minAudioDuration}s-${maxAudioDuration}s]，尝试下一个`);
-        audioAttempts++;
-      }
-    }
-
-    if (!validAudioFound) {
-      console.error(`未找到符合时长要求的音频文件，跳过当前视频生成`);
-      logToFile(`未找到符合时长要求的音频文件，跳过当前视频生成`);
+    // 检查音频文件是否存在
+    if (!fs.existsSync(audioPath)) {
+      console.error(`音频文件不存在: ${audioPath}`);
+      logToFile(`音频文件不存在: ${audioPath}`);
       successCount++;
       continue;
     }
+
+    // 获取音频时长
+    audioDuration = await getAudioDuration(audioPath);
+    console.log(`正在生成第${successCount + 1}个视频，使用音频: ${musicFiles[audioIdx]}，时长: ${audioDuration.toFixed(2)}s`);
+    logToFile(`正在生成第${successCount + 1}个视频，使用音频: ${musicFiles[audioIdx]}，时长: ${audioDuration.toFixed(2)}s`);
     // 2. 精确选片段
     let selectedClips = [], selectedDur = 0, order, videoRates;
     let tryCount = 0;
@@ -713,6 +721,10 @@ async function composeVideosWithOpen() {
       logToFile(`第${successCount + 1}个视频合成完成: ${outFileName}，耗时${cost}秒`);
       // 记录到对象
       allVideoIdsObj[outFileName] = { ids: idList, music: musicFiles[audioIdx] };
+      
+      // 更新合成记录
+      updateSynthesisLog(outFileName, idList, musicFiles[audioIdx]);
+      
       successCount++;
     } catch (error) {
       console.error(`第${successCount + 1}个视频合成失败:`, error.message);
@@ -736,11 +748,48 @@ async function composeVideosWithOpen() {
       }
     }
   }
-  // 输出到 js 文件（对象格式）
-  const jsOut = `// 每个视频的片段标识\nconst videoIds = ${JSON.stringify(allVideoIdsObj, null, 2)};\nmodule.exports = { videoIds }\n`;
-  fs.writeFileSync(path.join(batchDir, 'video_ids.js'), jsOut);
-  console.log(`全部合成完成，片段标识已输出到 ${batchDir}/video_ids.js`);
-  logToFile(`全部合成完成，片段标识已输出到 ${batchDir}/video_ids.js`);
+  // 定义合成记录文件路径
+const synthesisLogPath = path.join(batchDir, 'synthesis_log.json');
+
+// 初始化记录文件（如果不存在）
+if (!fs.existsSync(synthesisLogPath)) {
+  fs.writeFileSync(synthesisLogPath, JSON.stringify({}, null, 2));
+}
+
+// 每次合成成功后更新记录文件
+function updateSynthesisLog(videoName, clips, audio) {
+  // 读取现有记录
+  let logData = {};
+  if (fs.existsSync(synthesisLogPath)) {
+    try {
+      logData = JSON.parse(fs.readFileSync(synthesisLogPath, 'utf8'));
+    } catch (e) {
+      console.error('读取合成记录文件失败:', e.message);
+      logData = {};
+    }
+  }
+
+  // 添加新记录
+  logData[videoName] = {
+    clips: clips,
+    audio: audio,
+    timestamp: new Date().toISOString()
+  };
+
+  // 写入更新后的记录
+  fs.writeFileSync(synthesisLogPath, JSON.stringify(logData, null, 2));
+  console.log(`已更新合成记录: ${synthesisLogPath}`);
+  logToFile(`已更新合成记录: ${synthesisLogPath}`);
+}
+
+// 输出到 js 文件（对象格式） - 保留原有功能
+const jsOut = `// 每个视频的片段标识
+const videoIds = ${JSON.stringify(allVideoIdsObj, null, 2)};
+module.exports = { videoIds }
+`;
+fs.writeFileSync(path.join(batchDir, 'video_ids.js'), jsOut);
+console.log(`全部合成完成，片段标识已输出到 ${batchDir}/video_ids.js`);
+logToFile(`全部合成完成，片段标识已输出到 ${batchDir}/video_ids.js`);
   // 记录本轮最后一次用到的音频索引
   const newLastIdx = (musicStartIdx + successCount - 1 + musicFiles.length) % musicFiles.length;
   fs.writeFileSync(lastMusicIdxPath, JSON.stringify({

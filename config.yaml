@@ -22,13 +22,15 @@ audioExtractDir: music/9003
 # 音频长度控制参数（单位：秒）
 minAudioDuration: 15    # 最小音频时长
 maxAudioDuration: 35   # 最大音频时长
+# 是否启用音频预筛选
+enableAudioFilter: true
 # 合成输出目录
 outputDir: output/9003
 
 # 视频导出文件名前缀
 videoNamePrefix: 9003
 # 生成新视频数量
-numNewVideos: 3
+numNewVideos: 50
 
 # 视频片段播放速率调整区间
 minVideoRate: 0.90
