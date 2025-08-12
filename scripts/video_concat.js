@@ -667,14 +667,14 @@ async function composeVideosWithOpen() {
     // 统计当前 batchDir 下已存在的同前缀同日期视频数量，编号递增
     let existCount = 0;
     if (fs.existsSync(batchDir)) {
-      const existFiles = fs.readdirSync(batchDir).filter(f => f.startsWith(`${videoNamePrefix}${dateStr}_`) && f.endsWith('.mp4'));
+      const existFiles = fs.readdirSync(batchDir).filter(f => f.startsWith(`${videoNamePrefix}_${dateStr}_`) && f.endsWith('.mp4'));
       existCount = existFiles.length;
     }
     const videoIdx = existCount + 1;
-    const outFileName = `${videoNamePrefix}${dateStr}_${videoIdx}.mp4`;
+    const outFileName = `${videoNamePrefix}_${dateStr}_${videoIdx}.mp4`;
     const outPath = path.join(batchDir, outFileName);
     // 先用临时名合成
-    const tempOutName = `${videoNamePrefix}${dateStr}_temp_${videoIdx}.mp4`;
+    const tempOutName = `${videoNamePrefix}_${dateStr}_temp_${videoIdx}.mp4`;
     const tempOutPath = path.join(batchDir, tempOutName);
     try {
       // 检查选中的片段文件

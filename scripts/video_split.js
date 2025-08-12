@@ -89,8 +89,11 @@ const useFrameAccurateSplit = config.useFrameAccurateSplit || false;
     const sceneFrames = await getSceneChangeFrames(filePath, config.sceneThreshold || 0.4);
     console.log('转场点:', sceneFrames);
     if (sceneFrames.length < 2) {
-      // 分析后无可分割，直接移到已分析
-      fs.renameSync(filePath, path.join(doneDir, file));
+      // 分析后无转场点，移到无转场点文件夹
+      const noSceneDir = path.join(inputDir, '无转场点');
+      await fs.ensureDir(noSceneDir);
+      fs.renameSync(filePath, path.join(noSceneDir, file));
+      console.log(`${file} 无转场点，已移至无转场点文件夹。`);
       continue;
     }
     

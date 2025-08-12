@@ -1,7 +1,9 @@
 # 是否使用帧级精确分割（true为帧级，false为普通分割+减帧）
 useFrameAccurateSplit: false
-# 场景变化检测阈值，越大越严格（0.3~0.5常用）
-sceneThreshold: 0.4
+# 场景变化检测阈值，越大越严格（0.3~0.5常用
+# 值越低，越容易检测到场景变化（可能导致过度分割）
+# 值越高，检测越严格（可能导致漏检）
+sceneThreshold: 0.2
 # 普通分割时每个片段末尾减去的帧数
 minusFrames: 2
 
