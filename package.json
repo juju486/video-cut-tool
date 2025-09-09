@@ -5,5 +5,12 @@
     "jimp": "^0.16.1",
     "js-yaml": "^4.1.0",
     "progress": "^2.0.3"
+  },
+  "scripts": {
+    "scan:input": "node video_scan_info.js",
+    "scan:dir": "node video_scan_info.js -d",
+    "resize": "node video_resize_min_resolution.js",
+    "resize:dir": "node video_resize_min_resolution.js -d",
+    "resize:overwrite": "node video_resize_min_resolution.js --overwrite"
   }
 }

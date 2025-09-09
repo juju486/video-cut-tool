@@ -255,3 +255,84 @@ A: 需要先运行分割脚本生成片段。
 ---
 
 如有更多需求或问题，欢迎反馈！
+
+## 6. 视频信息扫描
+
+用于获取指定文件夹下所有视频的宽高比、码率、大小、分辨率、时长，并以 JSON 形式保存到该文件夹的 `video_info.json`。
+
+- 使用配置目录（优先读取 `config.yaml` 的 `inputDir`，否则默认 `input/`） :
+  ```powershell
+  node video_scan_info.js
+  ```
+- 指定扫描目录：
+  ```powershell
+  node video_scan_info.js -d "input/811"
+  node video_scan_info.js --dir clips/811
+  ```
+
+输出示例（节选）：
+```json
+{
+  "scannedDir": "input/811",
+  "generatedAt": "2024-01-01T12:00:00.000Z",
+  "total": 12,
+  "videos": [
+    {
+      "file": "a/b/c.mp4",
+      "size": "12.3 MB",
+      "duration": "00:00:12.345",
+      "width": 1080,
+      "height": 1920,
+      "resolution": "1080x1920",
+      "aspectRatio": "9:16",
+      "aspectRatioFloat": 0.5625,
+      "bitrate": { "bps": 1200000, "kbps": 1200.0 },
+      "fps": 29.97
+    }
+  ]
+}
+```
+
+注意：需要本机已安装 ffmpeg/ffprobe 并加入环境变量。
+
+## 7. 分辨率统一（最小分辨率）
+
+当指定文件夹中的视频分辨率小于设定最小宽高时，自动等比放大至不小于该最小分辨率（输出尺寸取偶数，避免编码器报错）。
+
+- 在 config.yaml 中定义最小宽高（任选一种写法） :
+  ```yaml
+  # 顶层键
+  resizeMinWidth: 720
+  resizeMinHeight: 1280
+
+  # 或嵌套写法
+  resize:
+    minWidth: 720
+    minHeight: 1280
+
+  # 或通用顶层键（作为兜底）
+  minWidth: 720
+  minHeight: 1280
+  ```
+
+- 命令示例（PowerShell）：
+  ```powershell
+  # 使用 config.yaml 的 inputDir（或默认 input/），输出到 _resized 保留目录结构
+  node video_resize_min_resolution.js
+
+  # 指定目录，输出到 _resized
+  node video_resize_min_resolution.js -d "input/811"
+
+  # 覆盖原文件（谨慎使用）
+  node video_resize_min_resolution.js --dir clips/811 --overwrite
+
+  # 仅预览将处理哪些文件
+  node video_resize_min_resolution.js -d "input/811" --dry-run
+  ```
+
+- 说明：
+  - 仅当 width < minWidth 或 height < minHeight 时才处理；
+  - 按最大缩放因子等比放大，确保两边都不小于阈值；
+  - 输出尺寸会向上取偶数；
+  - 不覆盖时输出到“目标目录/_resized/相对路径”；
+  - 需要 ffmpeg/ffprobe 可用。

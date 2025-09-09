@@ -708,11 +708,10 @@ async function composeVideosWithOpen() {
     const m = (now.getMonth() + 1).toString().padStart(2, '0');
     const d = now.getDate().toString().padStart(2, '0');
     const dateStr = `${y}${m}${d}`;
-    // 统计当前 batchDir 下已存在的同前缀同日期视频数量，编号递增
+    // 统计 outputDir 下当日已存在的同前缀视频数量，编号全局递增（不再仅限当前批次目录）
     let existCount = 0;
-    if (fs.existsSync(batchDir)) {
-      const existFiles = fs.readdirSync(batchDir).filter(f => f.startsWith(`${videoNamePrefix}_${dateStr}_`) && f.endsWith('.mp4'));
-      existCount = existFiles.length;
+    if (fs.existsSync(outputDir)) {
+      existCount = countExistingVideosToday(outputDir, videoNamePrefix, dateStr);
     }
     const videoIdx = existCount + 1;
     const outFileName = `${videoNamePrefix}_${dateStr}_${videoIdx}.mp4`;
@@ -843,6 +842,27 @@ logToFile(`全部合成完成，片段标识已输出到 ${batchDir}/video_ids.j
       logToFile(`第${v.index}个: ${v.file}，耗时${v.time}秒`);
     });
   }
+}
+
+// 递归统计 outputDir 下当日已生成的视频数量（按前缀+日期匹配），用于当日全局自增序号
+function countExistingVideosToday(rootDir, prefix, dateStr) {
+  let count = 0;
+  const escape = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp(`^${escape(prefix)}_${dateStr}_(\\d+)\\.mp4$`, 'i');
+  function walk(dir) {
+    let entries;
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const ent of entries) {
+      const full = path.join(dir, ent.name);
+      if (ent.isDirectory()) {
+        walk(full);
+      } else if (ent.isFile() && re.test(ent.name)) {
+        count++;
+      }
+    }
+  }
+  if (fs.existsSync(rootDir)) walk(rootDir);
+  return count;
 }
 
 composeVideosWithOpen();

@@ -2,7 +2,7 @@
 useFrameAccurateSplit: false
 # 场景变化检测阈值，越大越严格（0.3~0.5常用
 # 值越低，越容易检测到场景变化（可能导致过度分割）
-# 值越高，检测越严格（可能导致漏检）
+# 值越高，检测越严格（可能导致漏剪）
 sceneThreshold: 0.2
 # 普通分割时每个片段末尾减去的帧数
 minusFrames: 2
@@ -33,12 +33,15 @@ videoNamePrefix: 811
 # 生成新视频数量
 numNewVideos: 20
 
+minWidth: 720
+minHeight: 1280
+
 # 视频片段播放速率调整区间
 minVideoRate: 0.90
 maxVideoRate: 1.1
 # 片段最短和最长时间（单位：秒）
-minClipDuration: 1
-maxClipDuration: 4
+minClipDuration: 0.7
+maxClipDuration: 6
 # 音视频允许最大差值（单位：秒）
 maxAVDiff: 0.1
 # FFmpeg合成超时时间（单位：秒）
