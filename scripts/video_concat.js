@@ -708,12 +708,10 @@ async function composeVideosWithOpen() {
     const m = (now.getMonth() + 1).toString().padStart(2, '0');
     const d = now.getDate().toString().padStart(2, '0');
     const dateStr = `${y}${m}${d}`;
-    // 统计 outputDir 下当日已存在的同前缀视频数量，编号全局递增（不再仅限当前批次目录）
-    let existCount = 0;
-    if (fs.existsSync(outputDir)) {
-      existCount = countExistingVideosToday(outputDir, videoNamePrefix, dateStr);
-    }
-    const videoIdx = existCount + 1;
+    // 统计 outputDir 下当日已存在的同前缀最大序号，并结合状态文件生成下一序号（不因删除而回退）
+    const videoIdx = fs.existsSync(outputDir)
+      ? getNextVideoIndex(outputDir, videoNamePrefix, dateStr)
+      : 1;
     const outFileName = `${videoNamePrefix}_${dateStr}_${videoIdx}.mp4`;
     const outPath = path.join(batchDir, outFileName);
     // 先用临时名合成
@@ -744,6 +742,8 @@ async function composeVideosWithOpen() {
         msg => concatBar.interrupt(`第${successCount + 1}个视频 ${msg}`)
       );
       fs.renameSync(tempOutPath, outPath);
+      // 成功后更新当日最大序号状态，防止后续因删除导致回退
+      try { writeLastIndex(outputDir, videoNamePrefix, dateStr, videoIdx); } catch (_) {}
       const endTime = Date.now();
       const cost = ((endTime - startTime) / 1000).toFixed(2);
       videoTimes.push({
@@ -844,10 +844,10 @@ logToFile(`全部合成完成，片段标识已输出到 ${batchDir}/video_ids.j
   }
 }
 
-// 递归统计 outputDir 下当日已生成的视频数量（按前缀+日期匹配），用于当日全局自增序号
-function countExistingVideosToday(rootDir, prefix, dateStr) {
-  let count = 0;
-  const escape = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+// 基于已存在文件的最大序号与持久化状态计算下一个序号，避免删除导致回退或复用
+function getFileMaxVideoIndex(rootDir, prefix, dateStr) {
+  let maxIdx = 0;
+  const escape = s => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const re = new RegExp(`^${escape(prefix)}_${dateStr}_(\\d+)\\.mp4$`, 'i');
   function walk(dir) {
     let entries;
@@ -856,13 +856,55 @@ function countExistingVideosToday(rootDir, prefix, dateStr) {
       const full = path.join(dir, ent.name);
       if (ent.isDirectory()) {
         walk(full);
-      } else if (ent.isFile() && re.test(ent.name)) {
-        count++;
+      } else if (ent.isFile()) {
+        const m = ent.name.match(re);
+        if (m) {
+          const idx = parseInt(m[1], 10);
+          if (Number.isFinite(idx) && idx > maxIdx) maxIdx = idx;
+        }
       }
     }
   }
   if (fs.existsSync(rootDir)) walk(rootDir);
-  return count;
+  return maxIdx;
+}
+
+function getLastIndexStatePath(rootDir) {
+  return path.join(rootDir, 'last_video_index.json');
+}
+
+function readLastIndex(rootDir, prefix, dateStr) {
+  const statePath = getLastIndexStatePath(rootDir);
+  try {
+    if (fs.existsSync(statePath)) {
+      const data = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+      const key = `${prefix}_${dateStr}`;
+      const v = data[key];
+      if (Number.isFinite(v)) return v;
+    }
+  } catch (_) {}
+  return 0;
+}
+
+function writeLastIndex(rootDir, prefix, dateStr, idx) {
+  const statePath = getLastIndexStatePath(rootDir);
+  let data = {};
+  try {
+    if (fs.existsSync(statePath)) {
+      data = JSON.parse(fs.readFileSync(statePath, 'utf8')) || {};
+    }
+  } catch (_) {}
+  const key = `${prefix}_${dateStr}`;
+  if (!Number.isFinite(data[key]) || idx > data[key]) {
+    data[key] = idx;
+    try { fs.writeFileSync(statePath, JSON.stringify(data, null, 2)); } catch (_) {}
+  }
+}
+
+function getNextVideoIndex(rootDir, prefix, dateStr) {
+  const fileMax = getFileMaxVideoIndex(rootDir, prefix, dateStr);
+  const stateMax = readLastIndex(rootDir, prefix, dateStr);
+  return Math.max(fileMax, stateMax) + 1;
 }
 
 composeVideosWithOpen();
