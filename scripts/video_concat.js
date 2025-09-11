@@ -30,6 +30,79 @@ const minAudioDuration = config.minAudioDuration || 30;  // 最小音频时长(�
 const maxAudioDuration = config.maxAudioDuration || 180; // 最大音频时长(秒)
 const enableAudioFilter = config.enableAudioFilter !== undefined ? config.enableAudioFilter : true;
 
+// 新增：FFmpeg 编码与加速配置（支持 AMD/NVIDIA/CPU）
+const ffmpegVideoCodec = config.ffmpegVideoCodec || 'libx264'; // 可选：libx264 | h264_nvenc | h264_amf
+const ffmpegPreset = config.ffmpegPreset || 'veryfast';        // libx264 预设
+const ffmpegThreads = Number.isFinite(config.ffmpegThreads) ? config.ffmpegThreads : 0; // 0 表示不显式设置
+const ffmpegNvencPreset = config.ffmpegNvencPreset || 'p5';    // nvenc 预设（p1~p7）
+const ffmpegAmfQuality = config.ffmpegAmfQuality || 'balanced';// amf 质量：speed|balanced|quality
+const ffmpegCopyOnMux = config.ffmpegCopyOnMux !== undefined ? !!config.ffmpegCopyOnMux : true; // 合成时尽量复制视频流
+const ffmpegRemuxCopy = config.ffmpegRemuxCopy !== undefined ? !!config.ffmpegRemuxCopy : true; // 封装/修正时复制
+
+// 编码器自动探测与回退（兼容旧版 ffmpeg）
+let __resolvedCodec = null; // 'h264_amf' | 'h264_nvenc' | 'libx264'
+async function detectAvailableCodec(preferred) {
+  if (__resolvedCodec) return __resolvedCodec;
+  const { spawn } = require('child_process');
+  let out = '';
+  try {
+    const p = spawn('ffmpeg', ['-hide_banner', '-encoders'], { stdio: ['ignore', 'pipe', 'pipe'] });
+    p.stdout.on('data', d => out += d.toString());
+    p.stderr.on('data', d => out += d.toString());
+    await new Promise(r => p.on('close', () => r()));
+  } catch (_) {
+    // 旧版可能不支持 -hide_banner，再试一次
+    try {
+      const p2 = require('child_process').spawn('ffmpeg', ['-encoders'], { stdio: ['ignore', 'pipe', 'pipe'] });
+      p2.stdout.on('data', d => out += d.toString());
+      p2.stderr.on('data', d => out += d.toString());
+      await new Promise(r => p2.on('close', () => r()));
+    } catch (e) {
+      console.warn('无法列出 ffmpeg 编码器，将回退到 libx264');
+      __resolvedCodec = 'libx264';
+      return __resolvedCodec;
+    }
+  }
+  const has = (name) => new RegExp(`\\b${name}\\b`, 'i').test(out);
+  const pref = String(preferred || '').toLowerCase();
+  const candidates = [];
+  if (pref === 'h264_amf') {
+    if (has('h264_amf')) __resolvedCodec = 'h264_amf';
+    else if (has('h264_nvenc')) __resolvedCodec = 'h264_nvenc';
+    else __resolvedCodec = 'libx264';
+  } else if (pref === 'h264_nvenc') {
+    if (has('h264_nvenc')) __resolvedCodec = 'h264_nvenc';
+    else if (has('h264_amf')) __resolvedCodec = 'h264_amf';
+    else __resolvedCodec = 'libx264';
+  } else {
+    if (has('libx264')) __resolvedCodec = 'libx264';
+    else if (has('h264_amf')) __resolvedCodec = 'h264_amf';
+    else if (has('h264_nvenc')) __resolvedCodec = 'h264_nvenc';
+    else __resolvedCodec = 'libx264';
+  }
+  if (__resolvedCodec !== pref) {
+    console.log(`编码器已回退：${pref} -> ${__resolvedCodec}`);
+  } else {
+    console.log(`使用编码器：${__resolvedCodec}`);
+  }
+  return __resolvedCodec;
+}
+
+async function buildVideoCodecArgs() {
+  const codec = await detectAvailableCodec(ffmpegVideoCodec);
+  const args = [];
+  if (codec === 'h264_nvenc') {
+    args.push('-c:v', 'h264_nvenc', '-preset', ffmpegNvencPreset);
+  } else if (codec === 'h264_amf') {
+    // 兼容旧版 ffmpeg，尽量只设置编码器本身，避免不识别的选项
+    args.push('-c:v', 'h264_amf');
+  } else {
+    args.push('-c:v', 'libx264', '-preset', ffmpegPreset);
+    if (ffmpegThreads && ffmpegThreads > 0) args.push('-threads', String(ffmpegThreads));
+  }
+  return args;
+}
+
 // 确定实际使用的音频目录
 let actualMusicDir = musicDir;
 if (enableAudioFilter) {
@@ -92,11 +165,13 @@ async function concatClipsWithAudio(clips, audioPath, outPath, outputDir, audioR
   if (videoRates && videoRates[0] !== 1.0) {
     const speededVideo = path.join(outputDir, `speeded_${Date.now()}.mp4`);
     const vRate = videoRates[0];
-    await new Promise((resolve, reject) => {
+    await new Promise(async (resolve, reject) => {
+      const codecArgs = await buildVideoCodecArgs();
       const args = [
         '-i', finalVideo,
         '-filter:v', `setpts=${(1/vRate).toFixed(6)}*PTS`,
         '-an',
+        ...codecArgs,
         '-y',
         speededVideo
       ];
@@ -171,7 +246,7 @@ async function concatClipsWithAudio(clips, audioPath, outPath, outputDir, audioR
   // 构造ffmpeg命令：调整音频速率、视频速率，合成输出
   progressCb && progressCb('[3/4] 正在合成音视频...');
   const tempOut = path.join(outputDir, `out_${Date.now()}.mp4`);
-  await new Promise((resolve, reject) => {
+  await new Promise(async (resolve, reject) => {
     // 检查输入文件是否存在
     if (!fs.existsSync(finalVideo)) {
       reject(new Error(`视频文件不存在: ${finalVideo}`));
@@ -192,21 +267,19 @@ async function concatClipsWithAudio(clips, audioPath, outPath, outputDir, audioR
     const normalizedAudioPath = audioPath.replace(/\\/g, '/');
     const normalizedOutPath = tempOut.replace(/\\/g, '/');
 
-    // 合成音视频参数统一用libx264+aac
+    // 合成音视频参数：尽量复制视频流，降低 CPU
+    const videoCodecArgs = ffmpegCopyOnMux ? ['-c:v', 'copy'] : (await buildVideoCodecArgs());
     let args;
     args = [
       '-i', normalizedVideoPath,
       '-i', normalizedAudioPath,
-      '-c:v', 'libx264',
+      ...videoCodecArgs,
       '-c:a', 'aac',
       '-strict', '-2',
       '-shortest',
       '-y',
       normalizedOutPath
     ];
-    // console.log('使用简单合成模式（不调整速率）');
-
-    // console.log('FFmpeg命令:', args.join(' '));
 
     const { spawn } = require('child_process');
     const ffmpeg = spawn('ffmpeg', args, { stdio: 'pipe' });
@@ -290,7 +363,7 @@ async function concatClipsWithAudio(clips, audioPath, outPath, outputDir, audioR
   console.log(`裁剪视频 - 输入文件: ${path.basename(tempOut)}`);
   console.log(`裁剪视频 - 输出文件: ${path.basename(tempCutted)}`);
 
-  await new Promise((resolve, reject) => {
+  await new Promise(async (resolve, reject) => {
     // 检查输入文件是否存在
     if (!fs.existsSync(tempOut)) {
       reject(new Error(`输入文件不存在: ${tempOut}`));
@@ -301,17 +374,14 @@ async function concatClipsWithAudio(clips, audioPath, outPath, outputDir, audioR
     const normalizedTempOut = tempOut.replace(/\\/g, '/');
     const normalizedTempCutted = tempCutted.replace(/\\/g, '/');
 
-    // 裁剪步骤参数统一用libx264+aac
+    // 裁剪步骤：可选择复制或重编码（复制可能只到关键帧，更省 CPU）
+    const cutCodecArgs = ffmpegRemuxCopy ? ['-c', 'copy'] : [ ...(await buildVideoCodecArgs()), '-c:a', 'aac' ];
     const args = [
       '-i', normalizedTempOut,
       '-t', audioDuration.toString(),
-      '-c:v', 'libx264',
-      '-c:a', 'aac',
-      '-strict', '-2',
+      ...cutCodecArgs,
       '-y', normalizedTempCutted
     ];
-
-    // console.log('裁剪FFmpeg命令:', args.join(' '));
 
     const { spawn } = require('child_process');
     const ffmpeg = spawn('ffmpeg', args, { stdio: 'pipe' });
@@ -387,7 +457,7 @@ async function concatClipsWithAudio(clips, audioPath, outPath, outputDir, audioR
   console.log(`封装修正 - 输入文件: ${path.basename(tempCutted)}`);
   console.log(`封装修正 - 输出文件: ${path.basename(outPath)}`);
 
-  await new Promise((resolve, reject) => {
+  await new Promise(async (resolve, reject) => {
     // 检查临时文件是否存在
     if (!fs.existsSync(tempCutted)) {
       reject(new Error(`临时文件不存在: ${tempCutted}`));
@@ -398,12 +468,11 @@ async function concatClipsWithAudio(clips, audioPath, outPath, outputDir, audioR
     const normalizedTempCutted = tempCutted.replace(/\\/g, '/');
     const normalizedOutPath = outPath.replace(/\\/g, '/');
 
-    // 封装修正步骤参数统一用libx264+aac
+    // 封装修正：尽量复制以减少 CPU；如需要重编码可关闭开关
+    const muxCodecArgs = ffmpegRemuxCopy ? ['-c', 'copy'] : [ ...(await buildVideoCodecArgs()), '-c:a', 'aac' ];
     const args = [
       '-i', normalizedTempCutted,
-      '-c:v', 'libx264',
-      '-c:a', 'aac',
-      '-strict', '-2',
+      ...muxCodecArgs,
       '-y', normalizedOutPath
     ];
 

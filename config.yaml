@@ -13,9 +13,9 @@ openDir: open
 # 片段输出目录
 clipsDir: clips/811
 # 输入视频目录 提取音频的视频输入目录
-inputDir: input/811
+inputDir: input/811-2/_resized
 # 音频文件目录
-musicDir: music/811
+musicDir: music/811_concat
 # 音频提取输出目录
 audioExtractDir: music/811
 
@@ -23,7 +23,7 @@ audioExtractDir: music/811
 enableAudioFilter: false
 # 音频长度控制参数（单位：秒）
 minAudioDuration: 15    # 最小音频时长
-maxAudioDuration: 35   # 最大音频时长
+maxAudioDuration: 40   # 最大音频时长
 
 # 合成输出目录
 outputDir: output/811
@@ -31,7 +31,7 @@ outputDir: output/811
 # 视频导出文件名前缀
 videoNamePrefix: 811
 # 生成新视频数量
-numNewVideos: 20
+numNewVideos: 200
 
 minWidth: 720
 minHeight: 1280
@@ -50,3 +50,32 @@ ffmpegTimeout: 120
 videoShorterAudioMaxDiff: 2
 # 片段总时长大于音频时允许调整速率的最大差值（秒）
 videoLongerAudioMaxDiff: 2
+
+# 音频拼接配置
+# 从 inputDir 指定的目录中随机选择两个音频进行拼接，输出到指定目录
+# 可单独运行：node scripts/audio_concat_random.js
+# 注意：会递归扫描输入目录
+audioConcat:
+  inputDir: music/811          # 音频拼接输入目录
+  outputDir: music/811_concat  # 音频拼接输出目录
+  generateCount: 50            # 生成个数
+
+# 编码/加速配置
+# ffmpegVideoCodec 可选：
+#   - libx264   使用 CPU 编码（默认，配合 ffmpegPreset/ffmpegThreads）
+#   - h264_nvenc 使用 NVIDIA 硬件编码（N 卡）
+#   - h264_amf  使用 AMD AMF 硬件编码（A 卡）
+# 说明：A 卡请选择 h264_amf；若驱动/FFmpeg 未带 AMF，会回退到 CPU。
+ffmpegVideoCodec: h264_amf
+# x264 预设（CPU 模式有效）：ultrafast/superfast/veryfast/faster/fast/medium/slow/slower/veryslow
+ffmpegPreset: veryfast
+# NVENC 预设（N 卡）：p1 最快~ p7 最慢
+ffmpegNvencPreset: p5
+# AMF 质量（A 卡）：speed/balanced/quality
+ffmpegAmfQuality: balanced
+# 线程数（CPU 模式，0 不显式设置）
+ffmpegThreads: 0
+# 合成时尽量复制视频流（减少 CPU；若需要重编码可改 false）
+ffmpegCopyOnMux: true
+# 封装/修正时复制（减少 CPU；若需要重编码可改 false）
+ffmpegRemuxCopy: true
