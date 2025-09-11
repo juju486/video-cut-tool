@@ -39,6 +39,10 @@ const ffmpegAmfQuality = config.ffmpegAmfQuality || 'balanced';// amf 质量：s
 const ffmpegCopyOnMux = config.ffmpegCopyOnMux !== undefined ? !!config.ffmpegCopyOnMux : true; // 合成时尽量复制视频流
 const ffmpegRemuxCopy = config.ffmpegRemuxCopy !== undefined ? !!config.ffmpegRemuxCopy : true; // 封装/修正时复制
 
+// 新增：最小分辨率自动放大配置读取（优先级：resizeMinWidth/resizeMinHeight > resize.minWidth/resize.minHeight > minWidth/minHeight）
+const resizeMinWidth = config.resizeMinWidth || (config.resize && config.resize.minWidth) || config.minWidth || 0;
+const resizeMinHeight = config.resizeMinHeight || (config.resize && config.resize.minHeight) || config.minHeight || 0;
+
 // 编码器自动探测与回退（兼容旧版 ffmpeg）
 let __resolvedCodec = null; // 'h264_amf' | 'h264_nvenc' | 'libx264'
 async function detectAvailableCodec(preferred) {
@@ -94,13 +98,88 @@ async function buildVideoCodecArgs() {
   if (codec === 'h264_nvenc') {
     args.push('-c:v', 'h264_nvenc', '-preset', ffmpegNvencPreset);
   } else if (codec === 'h264_amf') {
-    // 兼容旧版 ffmpeg，尽量只设置编码器本身，避免不识别的选项
     args.push('-c:v', 'h264_amf');
   } else {
     args.push('-c:v', 'libx264', '-preset', ffmpegPreset);
     if (ffmpegThreads && ffmpegThreads > 0) args.push('-threads', String(ffmpegThreads));
   }
   return args;
+}
+
+// 新增：获取视频宽高
+async function getVideoDimensions(p) {
+  return new Promise((resolve, reject) => {
+    const { spawn } = require('child_process');
+    const proc = spawn('ffprobe', [
+      '-v', 'error',
+      '-select_streams', 'v:0',
+      '-show_entries', 'stream=width,height',
+      '-of', 'csv=p=0:s=x',
+      p
+    ]);
+    let data = '';
+    proc.stdout.on('data', d => data += d.toString());
+    proc.on('close', () => {
+      const m = data.trim().match(/(\d+)x(\d+)/);
+      if (m) return resolve({ width: +m[1], height: +m[2] });
+      resolve({ width: 0, height: 0 });
+    });
+    proc.on('error', reject);
+  });
+}
+
+// 新增：向上取偶
+function nextEven(n) { const x = Math.ceil(n); return x % 2 === 0 ? x : x + 1; }
+
+// 新增：确保片段满足最小分辨率（仅放大，不缩小），返回可能的新路径；带缓存避免重复处理
+const __resizeCache = new Map();
+async function ensureMinResolution(clipPath, cacheDir, minW, minH) {
+  if (!minW || !minH) return clipPath;
+  if (__resizeCache.has(clipPath)) return __resizeCache.get(clipPath);
+  try {
+    const { width, height } = await getVideoDimensions(clipPath);
+    if (width >= minW && height >= minH) {
+      __resizeCache.set(clipPath, clipPath);
+      return clipPath; // 已满足
+    }
+    if (!width || !height) {
+      __resizeCache.set(clipPath, clipPath);
+      return clipPath;
+    }
+    const scale = Math.max(minW / width, minH / height);
+    const outW = nextEven(width * scale);
+    const outH = nextEven(height * scale);
+    await fs.ensureDir(cacheDir);
+    const base = path.parse(clipPath).name; // 不改变 idList 使用
+    const outPath = path.join(cacheDir, `${base}_${outW}x${outH}.mp4`);
+    if (fs.existsSync(outPath)) { // 已有缓存
+      __resizeCache.set(clipPath, outPath);
+      return outPath;
+    }
+    await new Promise(async (resolve, reject) => {
+      const args = [
+        '-i', clipPath,
+        '-vf', `scale=${outW}:${outH}:flags=lanczos`,
+        '-an',
+        ...(await buildVideoCodecArgs()),
+        '-y', outPath
+      ];
+      const { spawn } = require('child_process');
+      const ff = spawn('ffmpeg', args, { stdio: 'pipe' });
+      let err = '';
+      ff.stderr.on('data', d => { err += d.toString(); });
+      ff.on('close', c => {
+        if (c === 0) resolve(); else reject(new Error(err || 'ffmpeg resize error'));
+      });
+      ff.on('error', reject);
+    });
+    __resizeCache.set(clipPath, outPath);
+    return outPath;
+  } catch (e) {
+    console.warn('自动放大失败，使用原片段:', path.basename(clipPath), e.message || e);
+    __resizeCache.set(clipPath, clipPath);
+    return clipPath;
+  }
 }
 
 // 确定实际使用的音频目录
@@ -765,8 +844,21 @@ async function composeVideosWithOpen() {
     if (openAssign.length > 0) {
       selectedClips = [openAssign[successCount]].concat(selectedClips);
     }
-    // 生成本视频的片段标识数组
-    const idList = selectedClips.map(f => {
+    // 新增：最小分辨率自动放大处理（保持 idList 基于原文件名）
+    const originalForIds = selectedClips.slice();
+    if (resizeMinWidth && resizeMinHeight) {
+      const resizeCacheDir = path.join(batchDir, '_resized_clips');
+      for (let i = 0; i < selectedClips.length; i++) {
+        const c = selectedClips[i];
+        const rPath = await ensureMinResolution(c, resizeCacheDir, resizeMinWidth, resizeMinHeight);
+        if (rPath !== c) {
+          concatBar.interrupt(`第${successCount + 1}个视频 放大 ${path.basename(c)} -> ${path.basename(rPath)}`);
+          selectedClips[i] = rPath;
+        }
+      }
+    }
+    // 生成本视频的片段标识数组（使用原始片段名，不受放大缓存命名影响）
+    const idList = originalForIds.map(f => {
       const base = path.parse(path.basename(f)).name;
       if (/^[a-z]+_\d+$/.test(base)) return base;
       return base;
