@@ -2,6 +2,7 @@ const yaml = require('js-yaml');
 const fs = require('fs-extra');
 const path = require('path');
 const ProgressBar = require('progress');
+const crypto = require('crypto');
 const {
   concatClips,
   shuffle,
@@ -133,53 +134,54 @@ function nextEven(n) { const x = Math.ceil(n); return x % 2 === 0 ? x : x + 1; }
 
 // 新增：确保片段满足最小分辨率（仅放大，不缩小），返回可能的新路径；带缓存避免重复处理
 const __resizeCache = new Map();
-async function ensureMinResolution(clipPath, cacheDir, minW, minH) {
-  if (!minW || !minH) return clipPath;
-  if (__resizeCache.has(clipPath)) return __resizeCache.get(clipPath);
-  try {
-    const { width, height } = await getVideoDimensions(clipPath);
-    if (width >= minW && height >= minH) {
-      __resizeCache.set(clipPath, clipPath);
-      return clipPath; // 已满足
-    }
-    if (!width || !height) {
-      __resizeCache.set(clipPath, clipPath);
-      return clipPath;
-    }
-    const scale = Math.max(minW / width, minH / height);
-    const outW = nextEven(width * scale);
-    const outH = nextEven(height * scale);
-    await fs.ensureDir(cacheDir);
+async function ensureMinResolution(clipPath, cacheRoot, minW, minH) {
+   if (!minW || !minH) return clipPath;
+   if (__resizeCache.has(clipPath)) return __resizeCache.get(clipPath);
+   try {
+     const { width, height } = await getVideoDimensions(clipPath);
+     if (width >= minW && height >= minH) {
+       __resizeCache.set(clipPath, clipPath);
+       return clipPath; // 已满足
+     }
+     if (!width || !height) {
+       __resizeCache.set(clipPath, clipPath);
+       return clipPath;
+     }
+     const scale = Math.max(minW / width, minH / height);
+     const outW = nextEven(width * scale);
+     const outH = nextEven(height * scale);
+    await fs.ensureDir(cacheRoot);
     const base = path.parse(clipPath).name; // 不改变 idList 使用
-    const outPath = path.join(cacheDir, `${base}_${outW}x${outH}.mp4`);
-    if (fs.existsSync(outPath)) { // 已有缓存
-      __resizeCache.set(clipPath, outPath);
-      return outPath;
-    }
-    await new Promise(async (resolve, reject) => {
-      const args = [
-        '-i', clipPath,
-        '-vf', `scale=${outW}:${outH}:flags=lanczos`,
-        '-an',
-        ...(await buildVideoCodecArgs()),
-        '-y', outPath
-      ];
-      const { spawn } = require('child_process');
-      const ff = spawn('ffmpeg', args, { stdio: 'pipe' });
-      let err = '';
-      ff.stderr.on('data', d => { err += d.toString(); });
-      ff.on('close', c => {
-        if (c === 0) resolve(); else reject(new Error(err || 'ffmpeg resize error'));
-      });
-      ff.on('error', reject);
-    });
-    __resizeCache.set(clipPath, outPath);
-    return outPath;
-  } catch (e) {
-    console.warn('自动放大失败，使用原片段:', path.basename(clipPath), e.message || e);
-    __resizeCache.set(clipPath, clipPath);
-    return clipPath;
-  }
+    const hash = crypto.createHash('sha1').update(path.resolve(clipPath)).digest('hex').slice(0, 8);
+    const outPath = path.join(cacheRoot, `${base}_${hash}_${outW}x${outH}.mp4`);
+     if (fs.existsSync(outPath)) { // 已有缓存
+       __resizeCache.set(clipPath, outPath);
+       return outPath;
+     }
+     await new Promise(async (resolve, reject) => {
+       const args = [
+         '-i', clipPath,
+         '-vf', `scale=${outW}:${outH}:flags=lanczos`,
+         '-an',
+         ...(await buildVideoCodecArgs()),
+         '-y', outPath
+       ];
+       const { spawn } = require('child_process');
+       const ff = spawn('ffmpeg', args, { stdio: 'pipe' });
+       let err = '';
+       ff.stderr.on('data', d => { err += d.toString(); });
+       ff.on('close', c => {
+         if (c === 0) resolve(); else reject(new Error(err || 'ffmpeg resize error'));
+       });
+       ff.on('error', reject);
+     });
+     __resizeCache.set(clipPath, outPath);
+     return outPath;
+   } catch (e) {
+     console.warn('自动放大失败，使用原片段:', path.basename(clipPath), e.message || e);
+     __resizeCache.set(clipPath, clipPath);
+     return clipPath;
+   }
 }
 
 // 确定实际使用的音频目录
@@ -847,7 +849,7 @@ async function composeVideosWithOpen() {
     // 新增：最小分辨率自动放大处理（保持 idList 基于原文件名）
     const originalForIds = selectedClips.slice();
     if (resizeMinWidth && resizeMinHeight) {
-      const resizeCacheDir = path.join(batchDir, '_resized_clips');
+      const resizeCacheDir = path.join(clipsDir, '_resized_clips');
       for (let i = 0; i < selectedClips.length; i++) {
         const c = selectedClips[i];
         const rPath = await ensureMinResolution(c, resizeCacheDir, resizeMinWidth, resizeMinHeight);
