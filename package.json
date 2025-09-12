@@ -12,6 +12,9 @@
     "resize": "node video_resize_min_resolution.js",
     "resize:dir": "node video_resize_min_resolution.js -d",
     "resize:overwrite": "node video_resize_min_resolution.js --overwrite",
-    "audio:concat": "node scripts/audio_concat_random.js"
+    "audio:concat": "node scripts/audio_concat_random.js",
+    "std": "node video_standardize.js",
+    "std:dir": "node video_standardize.js -d",
+    "std:overwrite": "node video_standardize.js --overwrite"
   }
 }

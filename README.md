@@ -336,3 +336,37 @@ A: 需要先运行分割脚本生成片段。
   - 输出尺寸会向上取偶数；
   - 不覆盖时输出到“目标目录/_resized/相对路径”；
   - 需要 ffmpeg/ffprobe 可用。
+
+## 8. 标准化输入视频（避免拼接卡顿）
+
+在分割/合成前将素材统一为完全一致的编码参数（H.264、像素格式、SAR、帧率、GOP、CRF、音频等），可显著降低拼接卡顿和兼容性问题。
+
+- 配置（config.yaml）：
+  ```yaml
+  standardize:
+    inputDir: input/801       # 不填则使用全局 inputDir
+    outputDirSuffix: _std     # 非覆盖模式下输出到 <inputDir>/_std
+    requirePixFmt: yuv420p
+    requireSar1: true
+    targetFps: 30
+    videoCodec: h264_amf      # 或 libx264/h264_nvenc（脚本会自动探测并回退）
+    gop: 60
+    crf: 21
+    audioCodec: aac
+    audioBitrate: 128k
+    audioChannels: 2
+    audioRate: 44100
+  ```
+
+- 命令（PowerShell）：
+  ```powershell
+  npm run std              # 使用配置目录扫描
+  npm run std:dir -- -d "input/801"   # 指定目录
+  npm run std:overwrite    # 原地覆盖（谨慎）
+  node video_standardize.js --dry-run  # 仅预览
+  ```
+
+- 仍卡顿时的建议：
+  - 在 `config.yaml` 将 `ffmpegCopyOnMux`、`ffmpegRemuxCopy` 设为 `false`，强制重编码；
+  - 或保持上述为 `true`，但先执行标准化确保完全一致；
+  - 如仍有问题，可改为“安全拼接模式”（后续版本将提供自动回退重编码）。

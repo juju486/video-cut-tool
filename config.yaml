@@ -11,7 +11,7 @@ minusFrames: 2
 openDir: open
 
 # 片段输出目录
-clipsDir: clips/801
+clipsDir: clips/801/_std
 # 输入视频目录 提取音频的视频输入目录
 inputDir: input/801
 # 音频文件目录
@@ -31,7 +31,7 @@ outputDir: output/801
 # 视频导出文件名前缀
 videoNamePrefix: 801
 # 生成新视频数量
-numNewVideos: 20
+numNewVideos: 50
 
 minWidth: 720
 minHeight: 1280
@@ -79,3 +79,50 @@ ffmpegThreads: 0
 ffmpegCopyOnMux: true
 # 封装/修正时复制（减少 CPU；若需要重编码可改 false）
 ffmpegRemuxCopy: true
+
+# 标准化输入视频（用于在分割/合成前将输入素材统一为完全一致的参数，减少拼接卡顿）
+# 可使用脚本：node video_standardize.js
+# - 支持命令行：
+#   -d/--dir 指定目录（默认使用 standardize.inputDir 或全局 inputDir）
+#   --overwrite 原地覆盖（谨慎）
+#   --dry-run 仅预览
+# - 仅当以下任一条件不满足时才会转码：像素格式、SAR=1:1、目标帧率；视频编码统一为 H.264。
+standardize:
+  # 标准化要扫描的输入目录；留空则使用全局 inputDir
+  inputDir: input/801
+
+  # 输出目录后缀（非覆盖模式下，会输出到 <inputDir>/<outputDirSuffix>）
+  outputDirSuffix: _std
+
+  # 判断条件（任一不满足即触发标准化）
+  requirePixFmt: yuv420p  # 统一像素格式
+  requireSar1: true       # 统一样本宽高比为 1:1（setsar=1）
+  targetFps: null           # 统一目标帧率（设为 null/省略 表示不强制）
+
+  # 目标显示宽高比（DAR），默认 9:16；可选："9:16"、"16:9"、数字（如 1.777）
+  # aspectMode: pad（加黑边），crop（裁剪），none（不调整）
+  targetAspectRatio: "9:16"
+  aspectMode: none
+  padColor: black
+
+  # 最小分辨率（小于该分辨率将按比例放大，保证不小于该阈值，输出尺寸取偶数）
+  ensureMinResolution: true
+  minWidth: 720
+  minHeight: 1280
+  # 缩放算法（可选：fast_bilinear/bilinear/bicubic/lanczos 等）
+  scaleFlags: bicubic
+
+  # 视频编码与质量
+  # videoCodec 将优先于全局 ffmpegVideoCodec（可选：libx264|h264_nvenc|h264_amf）
+  videoCodec: h264_amf
+  gop: 60                 # 关键帧间隔（建议 = targetFps*2 或素材常见 GOP）
+  crf: 21                 # 质量（x264/AMF/NVENC 皆支持；NVENC/AMF 将按各自质量策略解释）
+
+  # 音频参数（存在音轨则统一为 AAC；无音轨则 -an）
+  # audioCodec: aac
+  # audioBitrate: 128k
+  # audioChannels: 2
+  # audioRate: 44100
+
+  # 提示：若合成后仍卡帧，可在上方将 ffmpegCopyOnMux、ffmpegRemuxCopy 改为 false，
+  # 或保持 true 但先执行标准化确保完全一致；仍不行时再开启强制重编码的“安全拼接模式”。
