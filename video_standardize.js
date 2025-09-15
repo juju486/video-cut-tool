@@ -39,14 +39,18 @@ function parseArgs(argv) {
 }
 
 function loadConfig() {
-  const cfgPath = path.resolve(process.cwd(), 'config.yaml');
+  // 优先以脚本所在目录为根（仓库根）寻找 config.yaml，其次再看当前工作目录
+  const preferred = path.resolve(__dirname, 'config.yaml');
+  const cwdCfg = path.resolve(process.cwd(), 'config.yaml');
+  let cfgPath = fs.existsSync(preferred) ? preferred : (fs.existsSync(cwdCfg) ? cwdCfg : preferred);
+  const baseDir = path.dirname(cfgPath);
   try {
     if (fs.existsSync(cfgPath)) {
       const cfg = yaml.load(fs.readFileSync(cfgPath, 'utf8')) || {};
-      return cfg;
+      return { cfg, cfgDir: baseDir };
     }
   } catch (e) { if (process?.env?.DEBUG) console.warn('config load error:', e.message || e); }
-  return {};
+  return { cfg: {}, cfgDir: baseDir };
 }
 
 function getInputDir(cfg, argDir) {
@@ -409,10 +413,10 @@ async function standardizeOne(input, outPath, opt, need, hasAudio, forceCodec, d
 
 async function main() {
   const args = parseArgs(process.argv);
-  const cfg = loadConfig();
+  const { cfg, cfgDir } = loadConfig();
   const opt = pickStandardizeOptions(cfg);
   const dirRel = getInputDir(cfg, args.dir);
-  const root = path.resolve(process.cwd(), dirRel);
+  const root = path.resolve(cfgDir, dirRel);
   const overwrite = !!args.overwrite;
   const dryRun = !!args.dryRun;
 
@@ -469,6 +473,7 @@ async function main() {
       }
     } catch (e) {
       console.error('标准化失败:', path.basename(input), e.message || e);
+      // 失败时删除可能不完整的输出，避免后续误用
       try { await fs.remove(outPath); } catch {}
     }
     bar.tick();
