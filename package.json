@@ -7,6 +7,8 @@
     "progress": "^2.0.3"
   },
   "scripts": {
+    "concat": "node scripts/video_concat.js",
+    "split": "node scripts/video_split.js",
     "scan:input": "node video_scan_info.js",
     "scan:dir": "node video_scan_info.js -d",
     "resize": "node video_resize_min_resolution.js",

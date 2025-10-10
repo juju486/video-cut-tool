@@ -1,15 +1,20 @@
 #!/usr/bin/env node
 /**
- * 随机从指定目录中选择两个音频进行拼接，输出为新的音频文件。
+ * 随机从指定目录或目录组中选择音频进行拼接，输出为新的音频文件。
  *
  * 配置来源：config.yaml -> audioConcat
- *   - audioConcat.inputDir:   输入目录（递归扫描）
+ *   - audioConcat.inputDir:   输入目录（可以是字符串或字符串数组；递归扫描）
+ *     · 若为单个目录：每次随机选取两个不同音频拼接
+ *     · 若为多个目录：每次从每个目录各随机选取一个音频，按目录顺序拼接成一个
  *   - audioConcat.outputDir:  输出目录
  *   - audioConcat.generateCount:  生成个数
  * 若未配置，回退：
  *   - 输入目录使用 config.musicDir 或 'music'
  *   - 输出目录使用 'music/concat'
  *   - 生成个数默认 10
+ *
+ * 产物：
+ *   - 每次运行只生成一个清单 JSON（concat_manifest_YYYYMMDD_HHMMSS.json），记录本次所有输出文件与来源；不再为每个音频生成单独 JSON。
  *
  * 用法（PowerShell）：
  *   node scripts/audio_concat_random.js
@@ -30,12 +35,13 @@ function loadConfig() {
     if (fs.existsSync(cfgPath)) {
       cfg = yaml.load(fs.readFileSync(cfgPath, 'utf8')) || {};
     }
-  } catch (_) {}
+  } catch {}
   const ac = cfg.audioConcat || {};
-  const inputDir = ac.inputDir || cfg.musicDir || 'music';
+  const inputDirRaw = ac.inputDir ?? cfg.musicDir ?? 'music';
+  const inputDirs = Array.isArray(inputDirRaw) ? inputDirRaw.filter(Boolean) : [inputDirRaw];
   const outputDir = ac.outputDir || 'music/concat';
   const generateCount = Number.isFinite(+ac.generateCount) ? +ac.generateCount : 10;
-  return { inputDir, outputDir, generateCount };
+  return { inputDirs, outputDir, generateCount };
 }
 
 async function walkDir(dir) {
@@ -64,20 +70,18 @@ function makeOutName(index) {
   return `audio_${tag}_${String(index).padStart(2, '0')}.mp3`;
 }
 
-function concatTwoAudios(a, b, outPath) {
+function concatNAudios(files, outPath) {
   return new Promise((resolve, reject) => {
-    const aN = a.replace(/\\/g, '/');
-    const bN = b.replace(/\\/g, '/');
-    const oN = outPath.replace(/\\/g, '/');
-    const args = [
-      '-i', aN,
-      '-i', bN,
-      '-filter_complex', '[0:a][1:a]concat=n=2:v=0:a=1[aout]',
-      '-map', '[aout]',
-      '-c:a', 'libmp3lame',
-      '-b:a', '192k',
-      '-y', oN
-    ];
+    if (!Array.isArray(files) || files.length < 2) return reject(new Error('至少需要2个音频才能拼接'));
+    const args = [];
+    const norm = files.map(f => f.replace(/\\/g, '/'));
+    for (const f of norm) {
+      args.push('-i', f);
+    }
+    const labels = norm.map((_, i) => `[${i}:a]`).join('');
+    const filter = `${labels}concat=n=${norm.length}:v=0:a=1[aout]`;
+    args.push('-filter_complex', filter, '-map', '[aout]', '-c:a', 'libmp3lame', '-b:a', '192k', '-y', outPath.replace(/\\/g, '/'));
+
     const ff = spawn('ffmpeg', args, { stdio: 'pipe' });
     let stderrData = '';
     ff.stderr.on('data', d => { stderrData += d.toString(); });
@@ -89,39 +93,115 @@ function concatTwoAudios(a, b, outPath) {
   });
 }
 
+function concatTwoAudios(a, b, outPath) {
+  return concatNAudios([a, b], outPath);
+}
+
 async function main() {
-  const { inputDir, outputDir, generateCount } = loadConfig();
-  const inAbs = path.resolve(__dirname, '../', inputDir);
+  const { inputDirs, outputDir, generateCount } = loadConfig();
+  const inAbsList = inputDirs.map(d => path.resolve(__dirname, '../', d));
   const outAbs = path.resolve(__dirname, '../', outputDir);
 
-  if (!fs.existsSync(inAbs)) {
-    console.error(`输入目录不存在: ${inAbs}`);
-    process.exit(1);
+  // 校验输入目录
+  for (const p of inAbsList) {
+    if (!fs.existsSync(p)) {
+      console.error(`输入目录不存在: ${p}`);
+      process.exit(1);
+    }
   }
   await fs.ensureDir(outAbs);
 
-  const files = await walkDir(inAbs);
-  const audios = files.sort();
-  if (audios.length < 2) {
-    console.error('可用音频少于2个，无法拼接');
-    process.exit(1);
+  // 本次运行清单（单一 JSON）
+  const startNow = new Date();
+  const runTag = `${startNow.getFullYear()}${pad2(startNow.getMonth()+1)}${pad2(startNow.getDate())}_${pad2(startNow.getHours())}${pad2(startNow.getMinutes())}${pad2(startNow.getSeconds())}`;
+  const manifest = {
+    ts: startNow.toISOString(),
+    inputDirs: inAbsList,
+    outputDir: outAbs,
+    generateCount,
+    items: [],
+  };
+  const manifestPath = path.join(outAbs, `concat_manifest_${runTag}.json`);
+
+  if (inAbsList.length === 1) {
+    // 原有单目录逻辑：随机取两个音频
+    manifest.mode = 'single';
+    const inAbs = inAbsList[0];
+    const files = await walkDir(inAbs);
+    const audios = files.sort();
+    if (audios.length < 2) {
+      console.error('可用音频少于2个，无法拼接');
+      process.exit(1);
+    }
+
+    const bar = new ProgressBar('拼接音频 [:bar] :current/:total :etas', { total: generateCount, width: 26 });
+    const usedPairs = new Set(); // 避免重复相同组合（无序对）
+
+    for (let i = 1; i <= generateCount; i++) {
+      // 随机选择两个不同音频
+      let a, b, tries = 0;
+      do {
+        const i1 = Math.floor(Math.random() * audios.length);
+        let i2 = Math.floor(Math.random() * audios.length);
+        if (i2 === i1) i2 = (i2 + 1) % audios.length;
+        a = audios[i1];
+        b = audios[i2];
+        const key = [a, b].sort().join('||');
+        if (!usedPairs.has(key)) {
+          usedPairs.add(key);
+          break;
+        }
+        tries++;
+      } while (tries < 50);
+
+      const outName = makeOutName(i);
+      const outPath = path.join(outAbs, outName);
+
+      try {
+        await concatTwoAudios(a, b, outPath);
+        manifest.items.push({
+          sources: [
+            path.relative(inAbs, a).split(path.sep).join('/'),
+            path.relative(inAbs, b).split(path.sep).join('/'),
+          ],
+          out: outName,
+          ts: new Date().toISOString(),
+        });
+      } catch (e) {
+        console.error(`第${i}个拼接失败:`, e.message || e);
+      }
+      bar.tick();
+    }
+
+    // 写入清单
+    await fs.writeJson(manifestPath, manifest, { spaces: 2 });
+
+    console.log(`完成。输出目录: ${outAbs}，清单: ${manifestPath}`);
+    return;
   }
 
-  const bar = new ProgressBar('拼接音频 [:bar] :current/:total :etas', { total: generateCount, width: 26 });
-  const usedPairs = new Set(); // 避免重复相同组合（无序对）
+  // 多目录逻辑：每次从每个目录各取一个，按目录顺序拼接
+  manifest.mode = 'multi';
+  const perDirAudios = [];
+  for (const p of inAbsList) {
+    const files = (await walkDir(p)).sort();
+    if (!files.length) {
+      console.error(`目录无有效音频: ${p}`);
+      process.exit(1);
+    }
+    perDirAudios.push(files);
+  }
+
+  const bar = new ProgressBar('拼接音频(多目录) [:bar] :current/:total :etas', { total: generateCount, width: 26 });
+  const usedCombos = new Set(); // 避免重复同一组合（按目录顺序）
 
   for (let i = 1; i <= generateCount; i++) {
-    // 随机选择两个不同音频
-    let a, b, tries = 0;
+    let picks = [], tries = 0;
     do {
-      const i1 = Math.floor(Math.random() * audios.length);
-      let i2 = Math.floor(Math.random() * audios.length);
-      if (i2 === i1) i2 = (i2 + 1) % audios.length;
-      a = audios[i1];
-      b = audios[i2];
-      const key = [a, b].sort().join('||');
-      if (!usedPairs.has(key)) {
-        usedPairs.add(key);
+      picks = perDirAudios.map(list => list[Math.floor(Math.random() * list.length)]);
+      const key = picks.join('||');
+      if (!usedCombos.has(key)) {
+        usedCombos.add(key);
         break;
       }
       tries++;
@@ -131,23 +211,22 @@ async function main() {
     const outPath = path.join(outAbs, outName);
 
     try {
-      await concatTwoAudios(a, b, outPath);
-      // 附带写一个简单的元信息
-      const meta = {
-        a: path.relative(inAbs, a).split(path.sep).join('/'),
-        b: path.relative(inAbs, b).split(path.sep).join('/'),
+      await concatNAudios(picks, outPath);
+      manifest.items.push({
+        sources: picks.map((pp, idx) => path.relative(inAbsList[idx], pp).split(path.sep).join('/')),
         out: outName,
-        ts: new Date().toISOString()
-      };
-      const metaPath = path.join(outAbs, outName.replace(/\.mp3$/i, '.json'));
-      await fs.writeJson(metaPath, meta, { spaces: 2 });
+        ts: new Date().toISOString(),
+      });
     } catch (e) {
       console.error(`第${i}个拼接失败:`, e.message || e);
     }
     bar.tick();
   }
 
-  console.log(`完成。输出目录: ${outAbs}`);
+  // 写入清单
+  await fs.writeJson(manifestPath, manifest, { spaces: 2 });
+
+  console.log(`完成。输出目录: ${outAbs}，清单: ${manifestPath}`);
 }
 
 main().catch(err => {

@@ -3,7 +3,7 @@ useFrameAccurateSplit: false
 # 场景变化检测阈值，越大越严格（0.3~0.5常用
 # 值越低，越容易检测到场景变化（可能导致过度分割）
 # 值越高，检测越严格（可能导致漏剪）
-sceneThreshold: 0.2
+sceneThreshold: 0.3
 # 普通分割时每个片段末尾减去的帧数
 minusFrames: 2
 
@@ -17,7 +17,7 @@ inputDir: input/透肤袜
 # 音频文件目录
 musicDir: music/透肤袜
 # 音频提取输出目录
-audioExtractDir: music/透肤袜
+audioExtractDir: music/加绒打底裤_有口播
 
 # 是否启用音频预筛选
 enableAudioFilter: false
@@ -26,12 +26,12 @@ minAudioDuration: 15    # 最小音频时长
 maxAudioDuration: 40   # 最大音频时长
 
 # 合成输出目录
-outputDir: output/透肤袜
+outputDir: output/001
 
 # 视频导出文件名前缀
-videoNamePrefix: 透肤袜
+videoNamePrefix: 001
 # 生成新视频数量
-numNewVideos: 20
+numNewVideos: 50
 
 minWidth: 720
 minHeight: 1280
@@ -43,7 +43,7 @@ maxVideoRate: 1.1
 minClipDuration: 0.7
 maxClipDuration: 6
 # 音视频允许最大差值（单位：秒）
-maxAVDiff: 0.1
+maxAVDiff: 0.2
 # FFmpeg合成超时时间（单位：秒）
 ffmpegTimeout: 120
 # 片段总时长小于音频时允许调整速率的最大差值（秒）
@@ -56,9 +56,11 @@ videoLongerAudioMaxDiff: 2
 # 可单独运行：node scripts/audio_concat_random.js
 # 注意：会递归扫描输入目录
 audioConcat:
-  inputDir: music/811          # 音频拼接输入目录
-  outputDir: music/811_concat  # 音频拼接输出目录
-  generateCount: 50            # 生成个数
+  inputDir:       # 音频拼接输入目录
+    - music/开头       
+    - music/801 
+  outputDir: music/加绒打底裤_有口播  # 音频拼接输出目录
+  generateCount: 20            # 生成个数
 
 # 编码/加速配置
 # ffmpegVideoCodec 可选：
@@ -89,7 +91,7 @@ ffmpegRemuxCopy: true
 # - 仅当以下任一条件不满足时才会转码：像素格式、SAR=1:1、目标帧率；视频编码统一为 H.264。
 standardize:
   # 标准化要扫描的输入目录；留空则使用全局 inputDir
-  inputDir: input/透肤袜
+  inputDir: input/801_fdt
 
   # 输出目录后缀（非覆盖模式下，会输出到 <inputDir>/<outputDirSuffix>）
   outputDirSuffix: _std
