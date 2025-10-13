@@ -11,6 +11,8 @@
 - ⚙️ **灵活配置**：YAML配置文件支持参数调整
 - 📊 **进度监控**：详细的进度条和日志输出
 - 🗂️ **文件管理**：自动整理文件结构，避免重复处理
+- 🖼️ **视频增强**：使用AI模型提升视频分辨率和清晰度
+- 📐 **分辨率标准化**：自动调整视频分辨率至最小要求
 
 ## 目录结构
 
@@ -222,7 +224,7 @@ inputDir名称_简称_序号.mp4
 
 ## 注意事项
 
-- 确保 `ffmpeg` 已正确安装并加入环境变量
+- 确保 [ffmpeg](file://e:\work\video-cut-tool\video_scan_info.js#L15-L15) 已正确安装并加入环境变量
 - 建议不要手动删除 `clips`、`output`、`open` 文件夹中的文件
 - 分割精度依赖 ffmpeg 场景检测，处理速度与视频长度和机器性能相关
 - 相似度检测需要安装 `jimp` 库进行图像处理
@@ -260,7 +262,7 @@ A: 需要先运行分割脚本生成片段。
 
 用于获取指定文件夹下所有视频的宽高比、码率、大小、分辨率、时长，并以 JSON 形式保存到该文件夹的 `video_info.json`。
 
-- 使用配置目录（优先读取 `config.yaml` 的 `inputDir`，否则默认 `input/`） :
+- 使用配置目录（优先读取 [config.yaml](file://e:\work\video-cut-tool\config.yaml) 的 [inputDir](file://e:\work\video-cut-tool\scripts\video_split.js#L33-L33)，否则默认 `input/`） :
   ```powershell
   node video_scan_info.js
   ```
@@ -334,7 +336,7 @@ A: 需要先运行分割脚本生成片段。
   - 仅当 width < minWidth 或 height < minHeight 时才处理；
   - 按最大缩放因子等比放大，确保两边都不小于阈值；
   - 输出尺寸会向上取偶数；
-  - 不覆盖时输出到“目标目录/_resized/相对路径”；
+  - 不覆盖时输出到"目标目录/_resized/相对路径"；
   - 需要 ffmpeg/ffprobe 可用。
 
 ## 8. 标准化输入视频（避免拼接卡顿）
@@ -367,6 +369,34 @@ A: 需要先运行分割脚本生成片段。
   ```
 
 - 仍卡顿时的建议：
-  - 在 `config.yaml` 将 `ffmpegCopyOnMux`、`ffmpegRemuxCopy` 设为 `false`，强制重编码；
+  - 在 [config.yaml](file://e:\work\video-cut-tool\config.yaml) 将 `ffmpegCopyOnMux`、`ffmpegRemuxCopy` 设为 `false`，强制重编码；
   - 或保持上述为 `true`，但先执行标准化确保完全一致；
-  - 如仍有问题，可改为“安全拼接模式”（后续版本将提供自动回退重编码）。
+  - 如仍有问题，可改为"安全拼接模式"（后续版本将提供自动回退重编码）。
+
+## 9. 视频片段筛选
+
+自动过滤掉不符合要求的视频片段。
+
+- 配置（config.yaml）：
+  ```yaml
+  filterClips:
+    inputDir: clips                                  # 输入片段目录
+    outputDir: filtered_clips                        # 输出目录
+    minWidth: 720                                    # 最小宽度
+    minHeight: 1280                                  # 最小高度
+    minDuration: 3                                   # 最小时长（秒）
+    maxDuration: 15                                  # 最大时长（秒）
+    aspectRatio: 9:16                                # 目标宽高比
+    tolerance: 0.1                                   # 宽高比容差
+  ```
+
+- 命令（PowerShell）：
+  ```powershell
+  node scripts/filter_clips.js
+  ```
+
+功能特点：
+- 根据宽高比、分辨率、时长等条件筛选片段
+- 符合条件的片段会软链接到输出目录（节省存储空间）
+- 支持自定义筛选条件
+- 保留原始文件结构
