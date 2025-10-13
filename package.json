@@ -7,6 +7,7 @@
     "progress": "^2.0.3"
   },
   "scripts": {
+    "enhance": "node video_enhance.js",
     "concat": "node scripts/video_concat.js",
     "split": "node scripts/video_split.js",
     "scan:input": "node video_scan_info.js",
