@@ -13,7 +13,7 @@ openDir: open
 # 片段输出目录
 clipsDir: clips/811_fdt
 # 输入视频目录 提取音频的视频输入目录
-inputDir: input/透肤袜
+inputDir: input/811_fdt
 # 音频文件目录
 musicDir: music/透肤袜
 # 音频提取输出目录
@@ -130,27 +130,3 @@ standardize:
   # 或保持 true 但先执行标准化确保完全一致；仍不行时再开启强制重编码的“安全拼接模式”。
 fastSplitCopy: true
 fastSeekFirst: true
-
-# 视频增强配置 (Real-ESRGAN)
-# 使用脚本: node video_enhance.js
-videoEnhance:
-  # Real-ESRGAN 程序路径，默认在项目根目录的 'real' 文件夹下
-  realesrganPath: real/realesrgan-ncnn-vulkan.exe
-  # 输入文件或目录
-  input: clips/811_fdt
-  # 输出目录
-  outputDir: clips/811_fdt/enhanced
-  # 使用的模型: realesrgan-x4plus (通用), realesrgan-x4plus-anime (动漫)
-  model: realesrgan-x4plus
-  # 输出文件名后缀
-  suffix: _enhanced_x4
-  # 放大倍数
-  scale: 4
-  # 并发数（每帧处理并行 worker 数），默认 1。可按需设置为 2/4/8 等，过大可能导致资源争抢。
-  jobs: 4
-  # 可选：在增强后对输出视频做精确缩放（优先级：命令行 > config）
-  # - targetWidth/targetHeight 可以只设置一个（另一个置为 null）以保持长宽比
-  # - scaleFlags: ffmpeg 缩放算法 flags（如 lanczos, bicubic, bilinear）
-  targetWidth: 1440
-  targetHeight: null
-  scaleFlags: lanczos
