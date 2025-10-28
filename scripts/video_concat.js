@@ -1,7 +1,7 @@
 const yaml = require('js-yaml');
 const fs = require('fs-extra');
 const path = require('path');
-const ProgressBar = require('progress');
+const ProgressBar = require('./electron_progress'); // 使用我们自定义的Electron兼容进度条
 const crypto = require('crypto');
 const {
   concatClips,
@@ -26,6 +26,8 @@ const ffmpegTimeout = (config.ffmpegTimeout || 120) * 1000; // ms
 const videoShorterAudioMaxDiff = config.videoShorterAudioMaxDiff || 2;
 const videoLongerAudioMaxDiff = config.videoLongerAudioMaxDiff || 2;
 const videoNamePrefix = config.videoNamePrefix || 'myvideo';
+// 新增：openClipsCount配置项，用于指定从openDir中选择的开头片段数量
+const openClipsCount = config.openClipsCount !== undefined ? config.openClipsCount : 1;
 // 音频长度控制参数
 const minAudioDuration = config.minAudioDuration || 30;  // 最小音频时长(秒)
 const maxAudioDuration = config.maxAudioDuration || 180; // 最大音频时长(秒)
@@ -640,7 +642,7 @@ async function composeVideosWithOpen() {
   const tempClipsDir = path.join(batchDir, 'temp_clips');
   await fs.ensureDir(tempClipsDir);
   // 日志文件路径和写入函数
-  const logPath = path.join(batchDir, 'batch_log.txt');
+  const logPath = path.join(batchDir, 'log.log');
   function logToFile(...args) {
     const msg = args.map(x => (typeof x === 'string' ? x : JSON.stringify(x))).join(' ');
     fs.appendFileSync(logPath, `[${new Date().toLocaleString()}] ${msg}
@@ -671,6 +673,9 @@ async function composeVideosWithOpen() {
     logData[videoName] = {
       clips: clips,
       audio: audio,
+      openDir: openDir,        // 添加开头片段文件夹路径
+      clipsDir: clipsDir,      // 添加片段文件夹路径
+      musicDir: musicDir,      // 添加音频文件夹路径
       timestamp: new Date().toISOString()
     };
 
@@ -695,17 +700,16 @@ async function composeVideosWithOpen() {
     ? fs.readdirSync(openDir).filter(f => /\.mp4$/i.test(f)).map(f => path.join(openDir, f))
     : [];
   let openAssign = [];
-  if (openFiles.length > 0) {
-    const base = Math.floor(numNewVideos / openFiles.length);
-    let remain = numNewVideos % openFiles.length;
-    for (let i = 0; i < openFiles.length; i++) {
-      for (let j = 0; j < base; j++) openAssign.push(openFiles[i]);
-      if (remain > 0) { openAssign.push(openFiles[i]); remain--; }
-    }
-    // 打乱开头分配顺序
-    for (let i = openAssign.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [openAssign[i], openAssign[j]] = [openAssign[j], openAssign[i]];
+  if (openFiles.length > 0 && openClipsCount > 0) {
+    // 如果配置了openClipsCount且openDir中有文件，则为每个视频选择指定数量的开头片段
+    for (let i = 0; i < numNewVideos; i++) {
+      // 随机选择openClipsCount个开头片段
+      const selectedOpenClips = [];
+      for (let j = 0; j < openClipsCount; j++) {
+        const randomIndex = Math.floor(Math.random() * openFiles.length);
+        selectedOpenClips.push(openFiles[randomIndex]);
+      }
+      openAssign.push(selectedOpenClips);
     }
   }
   const usedOrders = new Set();
@@ -843,8 +847,15 @@ async function composeVideosWithOpen() {
       tryIndex++;
       continue;
     }
-    if (openAssign.length > 0) {
-      selectedClips = [openAssign[successCount]].concat(selectedClips);
+    // 添加open片段到selectedClips的开头
+    if (openAssign.length > 0 && openAssign[successCount]) {
+      // 如果openAssign[successCount]是数组（多个开头片段），则直接合并
+      // 否则保持原有逻辑（单个开头片段）
+      if (Array.isArray(openAssign[successCount])) {
+        selectedClips = openAssign[successCount].concat(selectedClips);
+      } else {
+        selectedClips = [openAssign[successCount]].concat(selectedClips);
+      }
     }
     // 新增：最小分辨率自动放大处理（保持 idList 基于原文件名）
     const originalForIds = selectedClips.slice();
@@ -947,6 +958,7 @@ async function composeVideosWithOpen() {
   }
 
 // 输出到 js 文件（对象格式） - 保留原有功能
+/*
 const jsOut = `// 每个视频的片段标识
 const videoIds = ${JSON.stringify(allVideoIdsObj, null, 2)};
 module.exports = { videoIds }
@@ -954,6 +966,7 @@ module.exports = { videoIds }
 fs.writeFileSync(path.join(batchDir, 'video_ids.js'), jsOut);
 console.log(`全部合成完成，片段标识已输出到 ${batchDir}/video_ids.js`);
 logToFile(`全部合成完成，片段标识已输出到 ${batchDir}/video_ids.js`);
+*/
   // 记录本轮最后一次用到的音频索引
   const newLastIdx = (musicStartIdx + successCount - 1 + musicFiles.length) % musicFiles.length;
   fs.writeFileSync(lastMusicIdxPath, JSON.stringify({

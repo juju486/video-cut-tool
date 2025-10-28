@@ -1,132 +1,57 @@
-# 是否使用帧级精确分割（true为帧级，false为普通分割+减帧）
 useFrameAccurateSplit: false
-# 场景变化检测阈值，越大越严格（0.3~0.5常用
-# 值越低，越容易检测到场景变化（可能导致过度分割）
-# 值越高，检测越严格（可能导致漏剪）
 sceneThreshold: 0.3
-# 普通分割时每个片段末尾减去的帧数
 minusFrames: 2
-
-# 开头片段目录
-openDir: open
-
-# 片段输出目录
-clipsDir: clips/801_fdt
-# 输入视频目录 提取音频的视频输入目录
-inputDir: input/801_fdt
-# 音频文件目录
+openDir: open/6602
+# 从openDir中选择的开头片段数量，0表示不使用开头片段
+openClipsCount: 0
+clipsDir: clips/811_fdt
+inputDir: input/811_fdt
 musicDir: music/加绒打底裤_有口播
-# 音频提取输出目录
 audioExtractDir: music/加绒打底裤_有口播
-
-# 是否启用音频预筛选
 enableAudioFilter: false
-# 音频长度控制参数（单位：秒）
-minAudioDuration: 15    # 最小音频时长
-maxAudioDuration: 40   # 最大音频时长
-
-# 合成输出目录
-outputDir: output/801
-
-# 视频导出文件名前缀
-videoNamePrefix: 801
-# 生成新视频数量
+minAudioDuration: 15
+maxAudioDuration: 40
+outputDir: output/811
+videoNamePrefix: '811'
 numNewVideos: 50
-
 minWidth: 720
 minHeight: 1280
-
-# 视频片段播放速率调整区间
-minVideoRate: 0.90
+minVideoRate: 0.9
 maxVideoRate: 1.1
-# 片段最短和最长时间（单位：秒）
 minClipDuration: 0.7
 maxClipDuration: 6
-# 音视频允许最大差值（单位：秒）
 maxAVDiff: 0.2
-# FFmpeg合成超时时间（单位：秒）
 ffmpegTimeout: 120
-# 片段总时长小于音频时允许调整速率的最大差值（秒）
 videoShorterAudioMaxDiff: 2
-# 片段总时长大于音频时允许调整速率的最大差值（秒）
 videoLongerAudioMaxDiff: 2
-
-# 音频拼接配置
-# 从 inputDir 指定的目录中随机选择两个音频进行拼接，输出到指定目录
-# 可单独运行：node scripts/audio_concat_random.js
-# 注意：会递归扫描输入目录
 audioConcat:
-  inputDir:       # 音频拼接输入目录
-    - music/开头       
-    - music/801 
-  outputDir: music/加绒打底裤_有口播  # 音频拼接输出目录
-  generateCount: 20            # 生成个数
-
-# 编码/加速配置
-# ffmpegVideoCodec 可选：
-#   - libx264   使用 CPU 编码（默认，配合 ffmpegPreset/ffmpegThreads）
-#   - h264_nvenc 使用 NVIDIA 硬件编码（N 卡）
-#   - h264_amf  使用 AMD AMF 硬件编码（A 卡）
-# 说明：A 卡请选择 h264_amf；若驱动/FFmpeg 未带 AMF，会回退到 CPU。
+  inputDir:
+    - music/开头
+    - music/801
+  outputDir: music/加绒打底裤_有口播
+  generateCount: 20
 ffmpegVideoCodec: h264_amf
-# x264 预设（CPU 模式有效）：ultrafast/superfast/veryfast/faster/fast/medium/slow/slower/veryslow
 ffmpegPreset: veryfast
-# NVENC 预设（N 卡）：p1 最快~ p7 最慢
 ffmpegNvencPreset: p5
-# AMF 质量（A 卡）：speed/balanced/quality
 ffmpegAmfQuality: balanced
-# 线程数（CPU 模式，0 不显式设置）
 ffmpegThreads: 0
-# 合成时尽量复制视频流（减少 CPU；若需要重编码可改 false）
 ffmpegCopyOnMux: true
-# 封装/修正时复制（减少 CPU；若需要重编码可改 false）
 ffmpegRemuxCopy: true
-
-# 标准化输入视频（用于在分割/合成前将输入素材统一为完全一致的参数，减少拼接卡顿）
-# 可使用脚本：node video_standardize.js
-# - 支持命令行：
-#   -d/--dir 指定目录（默认使用 standardize.inputDir 或全局 inputDir）
-#   --overwrite 原地覆盖（谨慎）
-#   --dry-run 仅预览
-# - 仅当以下任一条件不满足时才会转码：像素格式、SAR=1:1、目标帧率；视频编码统一为 H.264。
 standardize:
-  # 标准化要扫描的输入目录；留空则使用全局 inputDir
   inputDir: input/801_fdt
-
-  # 输出目录后缀（非覆盖模式下，会输出到 <inputDir>/<outputDirSuffix>）
   outputDirSuffix: _std
-
-  # 判断条件（任一不满足即触发标准化）
-  requirePixFmt: yuv420p  # 统一像素格式
-  requireSar1: true       # 统一样本宽高比为 1:1（setsar=1）
-  targetFps: null           # 统一目标帧率（设为 null/省略 表示不强制）
-
-  # 目标显示宽高比（DAR），默认 9:16；可选："9:16"、"16:9"、数字（如 1.777）
-  # aspectMode: pad（加黑边），crop（裁剪），none（不调整）
-  targetAspectRatio: "9:16"
+  requirePixFmt: yuv420p
+  requireSar1: true
+  targetFps: null
+  targetAspectRatio: '9:16'
   aspectMode: none
   padColor: black
-
-  # 最小分辨率（小于该分辨率将按比例放大，保证不小于该阈值，输出尺寸取偶数）
   ensureMinResolution: true
   minWidth: 720
   minHeight: 1280
-  # 缩放算法（可选：fast_bilinear/bilinear/bicubic/lanczos 等）
   scaleFlags: bicubic
-
-  # 视频编码与质量
-  # videoCodec 将优先于全局 ffmpegVideoCodec（可选：libx264|h264_nvenc|h264_amf）
   videoCodec: h264_amf
-  gop: 60                 # 关键帧间隔（建议 = targetFps*2 或素材常见 GOP）
-  crf: 21                 # 质量（x264/AMF/NVENC 皆支持；NVENC/AMF 将按各自质量策略解释）
-
-  # 音频参数（存在音轨则统一为 AAC；无音轨则 -an）
-  # audioCodec: aac
-  # audioBitrate: 128k
-  # audioChannels: 2
-  # audioRate: 44100
-
-  # 提示：若合成后仍卡帧，可在上方将 ffmpegCopyOnMux、ffmpegRemuxCopy 改为 false，
-  # 或保持 true 但先执行标准化确保完全一致；仍不行时再开启强制重编码的“安全拼接模式”。
+  gop: 60
+  crf: 21
 fastSplitCopy: true
 fastSeekFirst: true

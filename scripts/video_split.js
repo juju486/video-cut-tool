@@ -1,7 +1,7 @@
 const fs = require('fs-extra');
 const path = require('path');
 const yaml = require('js-yaml');
-const ProgressBar = require('progress');
+const ProgressBar = require('./electron_progress'); // 使用我们自定义的Electron兼容进度条
 const {
   getVideoFiles,
   getSceneChangeFrames,
