@@ -406,7 +406,13 @@ async function concatClips(clips, outPath, outputDir) {
       '-f', 'concat',
       '-safe', '0',
       '-i', listFile,
-      '-c', 'copy',
+      // 统一音频参数，确保兼容性
+      '-c:v', 'copy',
+      '-c:a', 'aac',
+      '-ar', '44100',
+      '-ac', '2',
+      '-b:a', '192k',
+      '-movflags', '+faststart',
       outPath
     ];
     const ffmpeg = spawn('ffmpeg', args, { stdio: 'pipe' });

@@ -8,6 +8,7 @@
  *     · 若为多个目录：每次从每个目录各随机选取一个音频，按目录顺序拼接成一个
  *   - audioConcat.outputDir:  输出目录
  *   - audioConcat.generateCount:  生成个数
+ *   - audioConcat.firstAudio:     指定第一个音频文件名（可选，基于项目根目录的相对路径）
  * 若未配置，回退：
  *   - 输入目录使用 config.musicDir 或 'music'
  *   - 输出目录使用 'music/concat'
@@ -41,7 +42,9 @@ function loadConfig() {
   const inputDirs = Array.isArray(inputDirRaw) ? inputDirRaw.filter(Boolean) : [inputDirRaw];
   const outputDir = ac.outputDir || 'music/concat';
   const generateCount = Number.isFinite(+ac.generateCount) ? +ac.generateCount : 10;
-  return { inputDirs, outputDir, generateCount };
+  // 添加firstAudio配置项支持，基于项目根目录的相对路径
+  const firstAudio = ac.firstAudio || null;
+  return { inputDirs, outputDir, generateCount, firstAudio };
 }
 
 async function walkDir(dir) {
@@ -80,7 +83,8 @@ function concatNAudios(files, outPath) {
     }
     const labels = norm.map((_, i) => `[${i}:a]`).join('');
     const filter = `${labels}concat=n=${norm.length}:v=0:a=1[aout]`;
-    args.push('-filter_complex', filter, '-map', '[aout]', '-c:a', 'libmp3lame', '-b:a', '192k', '-y', outPath.replace(/\\/g, '/'));
+    // 统一音频参数，确保兼容性
+    args.push('-filter_complex', filter, '-map', '[aout]', '-c:a', 'libmp3lame', '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', outPath.replace(/\\/g, '/'));
 
     const ff = spawn('ffmpeg', args, { stdio: 'pipe' });
     let stderrData = '';
@@ -98,9 +102,10 @@ function concatTwoAudios(a, b, outPath) {
 }
 
 async function main() {
-  const { inputDirs, outputDir, generateCount } = loadConfig();
-  const inAbsList = inputDirs.map(d => path.resolve(__dirname, '../', d));
-  const outAbs = path.resolve(__dirname, '../', outputDir);
+  const { inputDirs, outputDir, generateCount, firstAudio } = loadConfig();
+  const projectRoot = path.resolve(__dirname, '../');
+  const inAbsList = inputDirs.map(d => path.resolve(projectRoot, d));
+  const outAbs = path.resolve(projectRoot, outputDir);
 
   // 校验输入目录
   for (const p of inAbsList) {
@@ -140,19 +145,42 @@ async function main() {
     for (let i = 1; i <= generateCount; i++) {
       // 随机选择两个不同音频
       let a, b, tries = 0;
-      do {
-        const i1 = Math.floor(Math.random() * audios.length);
-        let i2 = Math.floor(Math.random() * audios.length);
-        if (i2 === i1) i2 = (i2 + 1) % audios.length;
-        a = audios[i1];
-        b = audios[i2];
-        const key = [a, b].sort().join('||');
-        if (!usedPairs.has(key)) {
-          usedPairs.add(key);
-          break;
+      
+      // 如果配置了firstAudio，则第一个音频固定使用指定的音频
+      if (firstAudio) {
+        // 查找指定的第一个音频（基于项目根目录的相对路径）
+        const firstAudioPath = path.resolve(projectRoot, firstAudio);
+        // 检查文件是否存在
+        if (fs.existsSync(firstAudioPath)) {
+          a = firstAudioPath;
+        } else {
+          // 如果找不到指定的音频，则随机选择
+          const i1 = Math.floor(Math.random() * audios.length);
+          a = audios[i1];
         }
-        tries++;
-      } while (tries < 50);
+        
+        // 选择第二个音频，确保不与第一个音频相同
+        let i2;
+        do {
+          i2 = Math.floor(Math.random() * audios.length);
+        } while (audios[i2] === a && audios.length > 1);
+        b = audios[i2];
+      } else {
+        // 原有逻辑：随机选择两个不同音频
+        do {
+          const i1 = Math.floor(Math.random() * audios.length);
+          let i2 = Math.floor(Math.random() * audios.length);
+          if (i2 === i1) i2 = (i2 + 1) % audios.length;
+          a = audios[i1];
+          b = audios[i2];
+          const key = [a, b].sort().join('||');
+          if (!usedPairs.has(key)) {
+            usedPairs.add(key);
+            break;
+          }
+          tries++;
+        } while (tries < 50);
+      }
 
       const outName = makeOutName(i);
       const outPath = path.join(outAbs, outName);
@@ -198,7 +226,27 @@ async function main() {
   for (let i = 1; i <= generateCount; i++) {
     let picks = [], tries = 0;
     do {
-      picks = perDirAudios.map(list => list[Math.floor(Math.random() * list.length)]);
+      // 如果配置了firstAudio，则第一个目录使用指定的音频
+      if (firstAudio && perDirAudios[0]) {
+        // 查找指定的第一个音频（基于项目根目录的相对路径）
+        const firstAudioPath = path.resolve(projectRoot, firstAudio);
+        // 检查文件是否存在
+        if (fs.existsSync(firstAudioPath)) {
+          picks = [firstAudioPath];
+        } else {
+          // 如果找不到指定的音频，则随机选择
+          picks = [perDirAudios[0][Math.floor(Math.random() * perDirAudios[0].length)]];
+        }
+      } else {
+        // 原有逻辑：第一个目录随机选择
+        picks = [perDirAudios[0][Math.floor(Math.random() * perDirAudios[0].length)]];
+      }
+      
+      // 其他目录继续随机选择
+      for (let j = 1; j < perDirAudios.length; j++) {
+        picks.push(perDirAudios[j][Math.floor(Math.random() * perDirAudios[j].length)]);
+      }
+      
       const key = picks.join('||');
       if (!usedCombos.has(key)) {
         usedCombos.add(key);

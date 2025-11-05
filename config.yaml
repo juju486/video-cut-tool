@@ -1,57 +1,86 @@
-useFrameAccurateSplit: false
-sceneThreshold: 0.3
-minusFrames: 2
-openDir: open/6602
+# 视频分割相关配置
+useFrameAccurateSplit: false  # 是否使用帧精确分割
+sceneThreshold: 0.3           # 场景变化检测阈值，值越小分割越细
+minusFrames: 2                # 分割时减去的帧数，避免分割点过于靠近
+
+# 开头片段相关配置
+openDir: open/6602/_std/1            # 开头片段目录路径
 # 从openDir中选择的开头片段数量，0表示不使用开头片段
 openClipsCount: 0
-clipsDir: clips/811_fdt
-inputDir: input/811_fdt
-musicDir: music/加绒打底裤_有口播
-audioExtractDir: music/加绒打底裤_有口播
-enableAudioFilter: false
-minAudioDuration: 15
-maxAudioDuration: 40
-outputDir: output/811
-videoNamePrefix: '811'
-numNewVideos: 50
-minWidth: 720
-minHeight: 1280
-minVideoRate: 0.9
-maxVideoRate: 1.1
-minClipDuration: 0.7
-maxClipDuration: 6
-maxAVDiff: 0.2
-ffmpegTimeout: 120
-videoShorterAudioMaxDiff: 2
-videoLongerAudioMaxDiff: 2
+
+# 目录配置
+clipsDir: clips/811_fdt       # 视频片段目录路径
+inputDir: input/801_fdt       # 输入视频目录路径
+musicDir: music/加绒打底裤_有口播  # 背景音乐目录路径
+audioExtractDir: music/加绒打底裤_有口播  # 音频提取输出目录路径
+
+# 音频筛选配置
+enableAudioFilter: false      # 是否启用音频筛选功能
+minAudioDuration: 15          # 音频最小时长（秒）
+maxAudioDuration: 40          # 音频最大时长（秒）
+
+# 输出配置
+outputDir: output/811         # 视频输出目录路径
+videoNamePrefix: '811'        # 生成视频文件名前缀
+numNewVideos: 200              # 生成新视频的数量
+
+# 视频处理参数
+minWidth: 720                 # 视频最小宽度
+minHeight: 1280               # 视频最小高度
+minVideoRate: 0.9             # 视频播放速率下限
+maxVideoRate: 1.1             # 视频播放速率上限
+minClipDuration: 0.7          # 片段最小时长（秒）
+maxClipDuration: 6            # 片段最大时长（秒）
+maxAVDiff: 0.2                # 音视频最大时长差异（秒）
+ffmpegTimeout: 120            # FFmpeg执行超时时间（秒）
+videoShorterAudioMaxDiff: 2   # 视频短于音频时的最大差异（秒）
+videoLongerAudioMaxDiff: 2    # 视频长于音频时的最大差异（秒）
+
+# 音频合并配置
 audioConcat:
-  inputDir:
-    - music/开头
+  inputDir:               # 音频合并输入目录列表
     - music/801
-  outputDir: music/加绒打底裤_有口播
-  generateCount: 20
-ffmpegVideoCodec: h264_amf
-ffmpegPreset: veryfast
-ffmpegNvencPreset: p5
-ffmpegAmfQuality: balanced
-ffmpegThreads: 0
-ffmpegCopyOnMux: true
-ffmpegRemuxCopy: true
+  outputDir: music/6602_first  # 音频合并输出目录
+  generateCount: 20            # 生成音频数量
+  # 指定第一个音频文件名，如果设置，则每次合并时第一个音频将固定使用该文件
+  firstAudio: music/open/6602/1_a_8.5s.mp3   # 留空或删除此行则不指定
+
+# FFmpeg编码器配置
+ffmpegVideoCodec: h264_amf    # 视频编码器（h264_amf用于AMD显卡）
+ffmpegPreset: veryfast        # 编码预设（速度与质量的平衡）
+ffmpegNvencPreset: p5         # NVENC编码预设（NVIDIA显卡）
+ffmpegAmfQuality: balanced    # AMF编码质量（AMD显卡）
+ffmpegThreads: 0              # FFmpeg线程数（0表示自动）
+ffmpegCopyOnMux: true         # 合成时尽量复制视频流
+ffmpegRemuxCopy: true         # 封装/修正时复制
+
+# 视频标准化配置
 standardize:
-  inputDir: input/801_fdt
-  outputDirSuffix: _std
-  requirePixFmt: yuv420p
-  requireSar1: true
-  targetFps: null
-  targetAspectRatio: '9:16'
-  aspectMode: none
-  padColor: black
-  ensureMinResolution: true
-  minWidth: 720
-  minHeight: 1280
-  scaleFlags: bicubic
-  videoCodec: h264_amf
-  gop: 60
-  crf: 21
-fastSplitCopy: true
-fastSeekFirst: true
+  inputDir: open/6602     # 标准化输入目录
+  outputDirSuffix: _std       # 输出目录后缀
+  requirePixFmt: yuv420p      # 要求的像素格式
+  requireSar1: true           # 要求采样宽高比为1
+  targetFps: null             # 目标帧率（null表示保持原样）
+  targetAspectRatio: '9:16'   # 目标宽高比
+  aspectMode: none            # 宽高比处理模式
+  padColor: black             # 填充颜色
+  ensureMinResolution: true   # 确保最小分辨率
+  minWidth: 720               # 最小宽度
+  minHeight: 1280             # 最小高度
+  scaleFlags: bicubic         # 缩放算法
+  videoCodec: h264_amf        # 视频编码器
+  gop: 60                     # GOP大小（关键帧间隔）
+  crf: 21                     # 恒定质量因子
+
+# 快速分割优化配置
+fastSplitCopy: true           # 快速分割时优先尝试复制流
+fastSeekFirst: true           # 快速分割时先尝试在-i前使用-ss参数
+
+
+videoMerge:
+  inputDirs:                  # 输入视频目录列表（A视频和B视频目录）
+    - open/6602/_std/1            # A视频目录
+    - output/801/20251030_1544            # B视频目录
+  outputDir: output/801/merge/20251030_1544   # 合并后视频输出目录
+  # 合并模式: sequential(按顺序合并对应文件) | cross(交叉合并所有文件)
+  mergeMode: cross
