@@ -119,7 +119,25 @@ const useFrameAccurateSplit = config.useFrameAccurateSplit || false;
     // 2) 分割片段，失败则 quickFix 后重试
     let totalSplitTasks = sceneFrames.length - 1;
     const splitBar = new ProgressBar(`分割片段进度 [:bar] :current/:total (${file})`, { total: totalSplitTasks, width: 30 });
-    let splitClips = [];
+    
+    // 添加向主进程发送进度的函数
+    const sendProgress = (current, total, filename) => {
+      if (process.send) {
+        const percentage = Math.round((current / total) * 100);
+        process.send({ 
+          type: 'progress', 
+          message: `分割片段进度 [${'='.repeat(Math.round(30 * current / total))}${'-'.repeat(30 - Math.round(30 * current / total))}] ${current}/${total} (${filename}) (${percentage}%)` 
+        });
+      }
+    };
+    
+    // 修改splitBar的tick方法，同时发送进度更新到主进程
+    const originalTick = splitBar.tick.bind(splitBar);
+    splitBar.tick = function() {
+      originalTick();
+      sendProgress(this.curr, this.total, file);
+    };
+
     async function doSplit(inputForSplit) {
       if (useFrameAccurateSplit) {
         return await splitVideoByFrameSelect(inputForSplit, sceneFrames, alias, clipsDir, () => splitBar.tick());

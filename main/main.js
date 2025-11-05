@@ -188,6 +188,13 @@ ipcMain.handle('run-video-split', async (event) => {
       if (message && message.type === 'progress') {
         // 发送进度更新到渲染进程
         event.sender.send('update-progress-message', message.message);
+        
+        // 提取百分比并发送到进度条
+        const progressMatch = message.message.match(/(\d+)%\)/);
+        if (progressMatch) {
+          const percentage = parseInt(progressMatch[1]);
+          event.sender.send('update-progress', percentage);
+        }
       } else if (message && message.type === 'log') {
         // 发送日志消息到渲染进程
         event.sender.send('log-message', message.message);

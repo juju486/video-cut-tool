@@ -1,4 +1,3 @@
-// 将 currentTaskRunning 的定义提前到此处
 // 全局变量，用于跟踪当前任务状态
 let currentTaskRunning = false;
 

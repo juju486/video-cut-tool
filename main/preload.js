@@ -16,5 +16,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   runVideoConcat: () => ipcRenderer.invoke('run-video-concat'),
   stopCurrentTask: () => ipcRenderer.invoke('stop-current-task'),
   openDirectory: (dirPath) => ipcRenderer.invoke('open-directory', dirPath),
-  playSound: (type) => ipcRenderer.invoke('play-sound', type) // 添加播放提示音的API
+  playSound: (type) => ipcRenderer.invoke('play-sound', type)
 });
