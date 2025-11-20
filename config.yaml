@@ -3,16 +3,16 @@ sceneThreshold: 0.3
 minusFrames: 2
 openDir: open/6602/_std/1
 openClipsCount: 0
-clipsDir: clips\801_fdt
-inputDir: input/801_fdt
-musicDir: music/加绒打底裤_有口播
-audioExtractDir: music/加绒打底裤_有口播
+clipsDir: clips/198
+inputDir: input/198
+musicDir: music/A198薄款打底裤
+audioExtractDir: music/A198薄款打底裤
 enableAudioFilter: false
 minAudioDuration: 15
 maxAudioDuration: 40
-outputDir: output/801
-videoNamePrefix: '801'
-numNewVideos: 100
+outputDir: output/A198
+videoNamePrefix: 'A198'
+numNewVideos: 200
 minWidth: 720
 minHeight: 1280
 minVideoRate: 0.9
@@ -37,7 +37,7 @@ ffmpegThreads: 0
 ffmpegCopyOnMux: true
 ffmpegRemuxCopy: true
 standardize:
-  inputDir: open/6602
+  inputDir: input/198/未分析
   outputDirSuffix: _std
   requirePixFmt: yuv420p
   requireSar1: true
