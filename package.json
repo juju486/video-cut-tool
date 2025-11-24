@@ -1,12 +1,23 @@
 {
   "dependencies": {
+    "electron-squirrel-startup": "^1.0.1",
     "fluent-ffmpeg": "^2.1.3",
     "fs-extra": "^11.3.0",
     "jimp": "^0.16.1",
     "js-yaml": "^4.1.0",
     "progress": "^2.0.3"
   },
+  "devDependencies": {
+    "electron": "^38.3.0",
+    "electron-builder": "^24.0.0",
+    "electron-rebuild": "^3.2.9"
+  },
+  "main": "main/main.js",
   "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
+    "dist": "electron-builder",
+    "postinstall": "electron-rebuild",
     "enhance": "node video_enhance.js",
     "concat": "node scripts/video_concat.js",
     "split": "node scripts/video_split.js",

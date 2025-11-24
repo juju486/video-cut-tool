@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>视频批量剪辑与合成工具</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- 顶部导航栏 -->
+        <header class="app-header">
+            <div class="header-content">
+                <h1 class="app-title">视频批量剪辑与合成工具</h1>
+                <nav class="app-nav">
+                    <ul class="nav-list">
+                        <li class="nav-item active" data-tab="dashboard">仪表盘</li>
+                        <li class="nav-item" data-tab="files">文件管理</li>
+                        <li class="nav-item" data-tab="settings">设置</li>
+                        <li class="nav-item" data-tab="about">关于</li>
+                    </ul>
+                </nav>
+            </div>
+        </header>
+
+        <div class="main-content">
+            <!-- 侧边栏 -->
+            <aside class="sidebar">
+                <div class="sidebar-section">
+                    <h3>配置信息</h3>
+                    <div class="status-indicators">
+                        <div class="status-item">
+                            <span class="status-label">片段目录:</span>
+                            <span id="clips-dir-value" class="status-value" title="">-</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">音频目录:</span>
+                            <span id="music-dir-value" class="status-value" title="">-</span>
+                           
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">合成输出目录:</span>
+                            <span id="output-dir-value" class="status-value" title="">-</span>
+                            <span class="open-folder-icon" id="open-output-dir" title="打开目录">📁</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">文件名前缀:</span>
+                            <span id="video-name-prefix-value" class="status-value">-</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">生成数量:</span>
+                            <span id="num-new-videos-value" class="status-value">-</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="sidebar-section">
+                    <h3>系统信息</h3>
+                    <div class="status-indicators">
+                        <div class="status-item">
+                            <span class="status-label">运行状态:</span>
+                            <span id="system-status" class="status-value">就绪</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">FFmpeg:</span>
+                            <span id="ffmpeg-status" class="status-value">未检测</span>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- 主内容区域 -->
+            <main class="content">
+                <!-- 仪表盘标签页 -->
+                <section id="dashboard-tab" class="tab-content active">
+                    <div class="dashboard-grid">
+                        <!-- 操作面板 -->
+                        <div class="card operation-panel">
+                            <h2>操作面板</h2>
+                            <div class="operation-buttons">
+                                <button id="split-btn" class="btn btn-primary">
+                                    <span class="btn-icon">✂️</span>
+                                    <span class="btn-text">视频分割</span>
+                                </button>
+                                <button id="concat-btn" class="btn btn-primary">
+                                    <span class="btn-icon">🔗</span>
+                                    <span class="btn-text">视频合成</span>
+                                </button>
+                                <button id="dedup-btn" class="btn btn-secondary">
+                                    <span class="btn-icon">🔍</span>
+                                    <span class="btn-text">去重检测</span>
+                                </button>
+                                <button id="audio-btn" class="btn btn-secondary">
+                                    <span class="btn-icon">🎵</span>
+                                    <span class="btn-text">音频处理</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- 进度区域 -->
+                        <div class="card progress-section">
+                            <h2>处理进度</h2>
+                            <div class="progress-container">
+                                <div class="progress-bar-container">
+                                    <div class="progress-bar">
+                                        <div id="progress-fill" class="progress-fill"></div>
+                                    </div>
+                                    <span id="progress-text" class="progress-text">0%</span>
+                                </div>
+                                <div id="task-info" class="task-info">
+                                    等待任务开始...
+                                </div>
+                                <div class="task-controls" style="display: none; margin-top: 10px;">
+                                    <button id="stop-task-btn" class="btn btn-danger">停止任务</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 快速统计 -->
+                        <div class="card stats-section">
+                            <h2>快速统计</h2>
+                            <div class="stats-grid">
+                                <div class="stat-item">
+                                    <div class="stat-value" id="total-videos">0</div>
+                                    <div class="stat-label">视频总数</div>
+                                </div>
+                                <div class="stat-item">
+                                    <div class="stat-value" id="processed-clips">0</div>
+                                    <div class="stat-label">已处理片段</div>
+                                </div>
+                                <div class="stat-item">
+                                    <div class="stat-value" id="output-files">0</div>
+                                    <div class="stat-label">输出文件</div>
+                                </div>
+                                <div class="stat-item">
+                                    <div class="stat-value" id="success-rate">100%</div>
+                                    <div class="stat-label">成功率</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 日志区域 -->
+                    <div class="card log-section">
+                        <div class="log-header">
+                            <h2>运行日志</h2>
+                            <button id="clear-log" class="btn btn-small">清空日志</button>
+                        </div>
+                        <div id="log-container" class="log-container"></div>
+                    </div>
+                </section>
+
+                <!-- 文件管理标签页 -->
+                <section id="files-tab" class="tab-content">
+                    <div class="card">
+                        <h2>文件管理</h2>
+                        <div class="file-manager">
+                            <div class="file-actions">
+                                <button id="refresh-files" class="btn btn-primary">刷新</button>
+                                <button id="select-folder" class="btn btn-secondary">选择文件夹</button>
+                            </div>
+                            <div id="file-list-container" class="file-list-container">
+                                <!-- 文件列表将在这里动态生成 -->
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 设置标签页 -->
+                <section id="settings-tab" class="tab-content">
+                    <div class="card">
+                        <h2>配置设置</h2>
+                        <div class="settings-form">
+                            <div class="form-group">
+                                <label for="input-dir">输入视频目录 (inputDir):</label>
+                                <div class="input-group">
+                                    <input type="text" id="input-dir" class="form-input" placeholder="选择输入视频目录">
+                                    <button class="btn btn-small btn-browse-config" data-config="input-dir">浏览</button>
+                                </div>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="clips-dir">片段输出目录 (clipsDir):</label>
+                                <div class="input-group">
+                                    <input type="text" id="clips-dir" class="form-input" placeholder="选择片段输出目录">
+                                    <button class="btn btn-small btn-browse-config" data-config="clips-dir">浏览</button>
+                                </div>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="music-dir">音频文件目录 (musicDir):</label>
+                                <div class="input-group">
+                                    <input type="text" id="music-dir" class="form-input" placeholder="选择音频文件目录">
+                                    <button class="btn btn-small btn-browse-config" data-config="music-dir">浏览</button>
+                                </div>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="output-dir">合成输出目录 (outputDir):</label>
+                                <div class="input-group">
+                                    <input type="text" id="output-dir" class="form-input" placeholder="选择合成输出目录">
+                                    <button class="btn btn-small btn-browse-config" data-config="output-dir">浏览</button>
+                                </div>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="video-name-prefix">视频导出文件名前缀 (videoNamePrefix):</label>
+                                <input type="text" id="video-name-prefix" class="form-input" placeholder="请输入视频文件名前缀">
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="num-new-videos">生成新视频数量 (numNewVideos):</label>
+                                <input type="number" id="num-new-videos" class="form-input" min="1" value="50">
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="scene-threshold">场景变化检测阈值 (sceneThreshold):</label>
+                                <input type="number" id="scene-threshold" class="form-input" value="0.3" min="0" max="1" step="0.01">
+                            </div>
+                            
+                            <div class="form-actions">
+                                <button id="edit-config-file" class="btn btn-secondary">编辑配置文件</button>
+                                <button id="save-config" class="btn btn-primary">保存设置</button>
+                                <button id="reset-config" class="btn btn-secondary">恢复默认</button>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 关于标签页 -->
+                <section id="about-tab" class="tab-content">
+                    <div class="card">
+                        <h2>关于</h2>
+                        <div class="about-content">
+                            <h3>视频批量剪辑与合成工具</h3>
+                            <p>版本: 1.0.0</p>
+                            <p>这是一个基于 Electron 开发的视频处理工具，支持视频分割、合成、去重等功能。</p>
+                            <h4>功能特性:</h4>
+                            <ul>
+                                <li>自动视频分割</li>
+                                <li>智能视频合成</li>
+                                <li>重复片段检测</li>
+                                <li>批量处理支持</li>
+                                <li>可视化操作界面</li>
+                            </ul>
+                        </div>
+                    </div>
+                </section>
+            </main>
+        </div>
+    </div>
+    
+    <!-- 配置文件编辑弹窗 -->
+    <div id="config-editor-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>编辑配置文件</h2>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <textarea id="config-editor" class="config-editor"></textarea>
+            </div>
+            <div class="modal-footer">
+                <button id="save-config-file" class="btn btn-primary">保存</button>
+                <button id="cancel-config-edit" class="btn btn-secondary">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/main.js"></script>
+</body>
+</html>

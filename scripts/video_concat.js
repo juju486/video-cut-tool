@@ -1,7 +1,7 @@
 const yaml = require('js-yaml');
 const fs = require('fs-extra');
 const path = require('path');
-const ProgressBar = require('progress');
+const ProgressBar = require('./electron_progress'); // 使用我们自定义的Electron兼容进度条
 const crypto = require('crypto');
 const {
   concatClips,
@@ -26,6 +26,8 @@ const ffmpegTimeout = (config.ffmpegTimeout || 120) * 1000; // ms
 const videoShorterAudioMaxDiff = config.videoShorterAudioMaxDiff || 2;
 const videoLongerAudioMaxDiff = config.videoLongerAudioMaxDiff || 2;
 const videoNamePrefix = config.videoNamePrefix || 'myvideo';
+// 新增：openClipsCount配置项，用于指定从openDir中选择的开头片段数量
+const openClipsCount = config.openClipsCount !== undefined ? config.openClipsCount : 1;
 // 音频长度控制参数
 const minAudioDuration = config.minAudioDuration || 30;  // 最小音频时长(秒)
 const maxAudioDuration = config.maxAudioDuration || 180; // 最大音频时长(秒)
@@ -135,53 +137,53 @@ function nextEven(n) { const x = Math.ceil(n); return x % 2 === 0 ? x : x + 1; }
 // 新增：确保片段满足最小分辨率（仅放大，不缩小），返回可能的新路径；带缓存避免重复处理
 const __resizeCache = new Map();
 async function ensureMinResolution(clipPath, cacheRoot, minW, minH) {
-   if (!minW || !minH) return clipPath;
-   if (__resizeCache.has(clipPath)) return __resizeCache.get(clipPath);
-   try {
-     const { width, height } = await getVideoDimensions(clipPath);
-     if (width >= minW && height >= minH) {
-       __resizeCache.set(clipPath, clipPath);
-       return clipPath; // 已满足
-     }
-     if (!width || !height) {
-       __resizeCache.set(clipPath, clipPath);
-       return clipPath;
-     }
-     const scale = Math.max(minW / width, minH / height);
-     const outW = nextEven(width * scale);
-     const outH = nextEven(height * scale);
+  if (!minW || !minH) return clipPath;
+  if (__resizeCache.has(clipPath)) return __resizeCache.get(clipPath);
+  try {
+    const { width, height } = await getVideoDimensions(clipPath);
+    if (width >= minW && height >= minH) {
+      __resizeCache.set(clipPath, clipPath);
+      return clipPath; // 已满足
+    }
+    if (!width || !height) {
+      __resizeCache.set(clipPath, clipPath);
+      return clipPath;
+    }
+    const scale = Math.max(minW / width, minH / height);
+    const outW = nextEven(width * scale);
+    const outH = nextEven(height * scale);
     await fs.ensureDir(cacheRoot);
     const base = path.parse(clipPath).name; // 不改变 idList 使用
     const hash = crypto.createHash('sha1').update(path.resolve(clipPath)).digest('hex').slice(0, 8);
     const outPath = path.join(cacheRoot, `${base}_${hash}_${outW}x${outH}.mp4`);
-     if (fs.existsSync(outPath)) { // 已有缓存
-       __resizeCache.set(clipPath, outPath);
-       return outPath;
-     }
-     await new Promise(async (resolve, reject) => {
-       const args = [
-         '-i', clipPath,
-         '-vf', `scale=${outW}:${outH}:flags=lanczos`,
-         '-an',
-         ...(await buildVideoCodecArgs()),
-         '-y', outPath
-       ];
-       const { spawn } = require('child_process');
-       const ff = spawn('ffmpeg', args, { stdio: 'pipe' });
-       let err = '';
-       ff.stderr.on('data', d => { err += d.toString(); });
-       ff.on('close', c => {
-         if (c === 0) resolve(); else reject(new Error(err || 'ffmpeg resize error'));
-       });
-       ff.on('error', reject);
-     });
-     __resizeCache.set(clipPath, outPath);
-     return outPath;
-   } catch (e) {
-     console.warn('自动放大失败，使用原片段:', path.basename(clipPath), e.message || e);
-     __resizeCache.set(clipPath, clipPath);
-     return clipPath;
-   }
+    if (fs.existsSync(outPath)) { // 已有缓存
+      __resizeCache.set(clipPath, outPath);
+      return outPath;
+    }
+    await new Promise(async (resolve, reject) => {
+      const args = [
+        '-i', clipPath,
+        '-vf', `scale=${outW}:${outH}:flags=lanczos`,
+        '-an',
+        ...(await buildVideoCodecArgs()),
+        '-y', outPath
+      ];
+      const { spawn } = require('child_process');
+      const ff = spawn('ffmpeg', args, { stdio: 'pipe' });
+      let err = '';
+      ff.stderr.on('data', d => { err += d.toString(); });
+      ff.on('close', c => {
+        if (c === 0) resolve(); else reject(new Error(err || 'ffmpeg resize error'));
+      });
+      ff.on('error', reject);
+    });
+    __resizeCache.set(clipPath, outPath);
+    return outPath;
+  } catch (e) {
+    console.warn('自动放大失败，使用原片段:', path.basename(clipPath), e.message || e);
+    __resizeCache.set(clipPath, clipPath);
+    return clipPath;
+  }
 }
 
 // 确定实际使用的音频目录
@@ -250,7 +252,7 @@ async function concatClipsWithAudio(clips, audioPath, outPath, outputDir, audioR
       const codecArgs = await buildVideoCodecArgs();
       const args = [
         '-i', finalVideo,
-        '-filter:v', `setpts=${(1/vRate).toFixed(6)}*PTS`,
+        '-filter:v', `setpts=${(1 / vRate).toFixed(6)}*PTS`,
         '-an',
         ...codecArgs,
         '-y',
@@ -372,13 +374,13 @@ async function concatClipsWithAudio(clips, audioPath, outPath, outputDir, audioR
       ffmpeg.kill('SIGKILL');
       // 清理本轮所有相关临时文件
       if (fs.existsSync(finalVideo)) {
-        try { fs.unlinkSync(finalVideo); } catch (e) {}
+        try { fs.unlinkSync(finalVideo); } catch (e) { }
       }
       if (fs.existsSync(tempVideo)) {
-        try { fs.unlinkSync(tempVideo); } catch (e) {}
+        try { fs.unlinkSync(tempVideo); } catch (e) { }
       }
       if (fs.existsSync(tempOut)) {
-        try { fs.unlinkSync(tempOut); } catch (e) {}
+        try { fs.unlinkSync(tempOut); } catch (e) { }
       }
       reject(new Error('FFmpeg 合成超时'));
     }, ffmpegTimeout);
@@ -456,7 +458,7 @@ async function concatClipsWithAudio(clips, audioPath, outPath, outputDir, audioR
     const normalizedTempCutted = tempCutted.replace(/\\/g, '/');
 
     // 裁剪步骤：可选择复制或重编码（复制可能只到关键帧，更省 CPU）
-    const cutCodecArgs = ffmpegRemuxCopy ? ['-c', 'copy'] : [ ...(await buildVideoCodecArgs()), '-c:a', 'aac' ];
+    const cutCodecArgs = ffmpegRemuxCopy ? ['-c', 'copy'] : [...(await buildVideoCodecArgs()), '-c:a', 'aac'];
     const args = [
       '-i', normalizedTempOut,
       '-t', audioDuration.toString(),
@@ -474,10 +476,10 @@ async function concatClipsWithAudio(clips, audioPath, outPath, outputDir, audioR
       console.error('FFmpeg 裁剪超时，强制终止进程');
       ffmpeg.kill('SIGKILL');
       if (fs.existsSync(tempOut)) {
-        try { fs.unlinkSync(tempOut); } catch (e) {}
+        try { fs.unlinkSync(tempOut); } catch (e) { }
       }
       if (fs.existsSync(tempCutted)) {
-        try { fs.unlinkSync(tempCutted); } catch (e) {}
+        try { fs.unlinkSync(tempCutted); } catch (e) { }
       }
       reject(new Error('FFmpeg 裁剪超时'));
     }, ffmpegTimeout);
@@ -550,7 +552,7 @@ async function concatClipsWithAudio(clips, audioPath, outPath, outputDir, audioR
     const normalizedOutPath = outPath.replace(/\\/g, '/');
 
     // 封装修正：尽量复制以减少 CPU；如需要重编码可关闭开关
-    const muxCodecArgs = ffmpegRemuxCopy ? ['-c', 'copy'] : [ ...(await buildVideoCodecArgs()), '-c:a', 'aac' ];
+    const muxCodecArgs = ffmpegRemuxCopy ? ['-c', 'copy'] : [...(await buildVideoCodecArgs()), '-c:a', 'aac'];
     const args = [
       '-i', normalizedTempCutted,
       ...muxCodecArgs,
@@ -567,10 +569,10 @@ async function concatClipsWithAudio(clips, audioPath, outPath, outputDir, audioR
       console.error('FFmpeg 封装修正超时，强制终止进程');
       ffmpeg.kill('SIGKILL');
       if (fs.existsSync(tempCutted)) {
-        try { fs.unlinkSync(tempCutted); } catch (e) {}
+        try { fs.unlinkSync(tempCutted); } catch (e) { }
       }
       if (fs.existsSync(outPath)) {
-        try { fs.unlinkSync(outPath); } catch (e) {}
+        try { fs.unlinkSync(outPath); } catch (e) { }
       }
       reject(new Error('FFmpeg 封装修正超时'));
     }, ffmpegTimeout);
@@ -640,7 +642,7 @@ async function composeVideosWithOpen() {
   const tempClipsDir = path.join(batchDir, 'temp_clips');
   await fs.ensureDir(tempClipsDir);
   // 日志文件路径和写入函数
-  const logPath = path.join(batchDir, 'batch_log.txt');
+  const logPath = path.join(batchDir, 'log.log');
   function logToFile(...args) {
     const msg = args.map(x => (typeof x === 'string' ? x : JSON.stringify(x))).join(' ');
     fs.appendFileSync(logPath, `[${new Date().toLocaleString()}] ${msg}
@@ -671,6 +673,9 @@ async function composeVideosWithOpen() {
     logData[videoName] = {
       clips: clips,
       audio: audio,
+      openDir: openDir,        // 添加开头片段文件夹路径
+      clipsDir: clipsDir,      // 添加片段文件夹路径
+      musicDir: musicDir,      // 添加音频文件夹路径
       timestamp: new Date().toISOString()
     };
 
@@ -689,23 +694,34 @@ async function composeVideosWithOpen() {
   const videoTimes = [];
   // 进度条定义
   const concatBar = new ProgressBar('合成新视频进度 [:bar] :current/:total', { total: numNewVideos, width: 30 });
+
+  // 添加向主进程发送进度的函数
+  const sendProgress = (current, total) => {
+    if (process.send) {
+      const percentage = Math.round((current / total) * 100);
+      process.send({
+        type: 'progress',
+        message: `合成新视频进度 [${'='.repeat(Math.round(30 * current / total))}${'-'.repeat(30 - Math.round(30 * current / total))}] ${current}/${total} (${percentage}%)`
+      });
+    }
+  };
+
   const allClips = fs.readdirSync(clipsDir).filter(f => /\.mp4$/i.test(f)).map(f => path.join(clipsDir, f));
   const musicFiles = getMusicFiles();
   const openFiles = fs.existsSync(openDir)
     ? fs.readdirSync(openDir).filter(f => /\.mp4$/i.test(f)).map(f => path.join(openDir, f))
     : [];
   let openAssign = [];
-  if (openFiles.length > 0) {
-    const base = Math.floor(numNewVideos / openFiles.length);
-    let remain = numNewVideos % openFiles.length;
-    for (let i = 0; i < openFiles.length; i++) {
-      for (let j = 0; j < base; j++) openAssign.push(openFiles[i]);
-      if (remain > 0) { openAssign.push(openFiles[i]); remain--; }
-    }
-    // 打乱开头分配顺序
-    for (let i = openAssign.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [openAssign[i], openAssign[j]] = [openAssign[j], openAssign[i]];
+  if (openFiles.length > 0 && openClipsCount > 0) {
+    // 如果配置了openClipsCount且openDir中有文件，则为每个视频选择指定数量的开头片段
+    for (let i = 0; i < numNewVideos; i++) {
+      // 随机选择openClipsCount个开头片段
+      const selectedOpenClips = [];
+      for (let j = 0; j < openClipsCount; j++) {
+        const randomIndex = Math.floor(Math.random() * openFiles.length);
+        selectedOpenClips.push(openFiles[randomIndex]);
+      }
+      openAssign.push(selectedOpenClips);
     }
   }
   const usedOrders = new Set();
@@ -732,6 +748,10 @@ async function composeVideosWithOpen() {
   while (successCount < numNewVideos) {
     const startTime = Date.now();
     concatBar.tick(); // 每次开始处理一个新视频就刷新进度条
+
+    // 发送进度更新到主进程
+    sendProgress(successCount + 1, numNewVideos);
+
     // 1. 选音频：从预筛选的音频目录中选择
     let audioPath = null;
     let audioDuration = 0;
@@ -843,8 +863,15 @@ async function composeVideosWithOpen() {
       tryIndex++;
       continue;
     }
-    if (openAssign.length > 0) {
-      selectedClips = [openAssign[successCount]].concat(selectedClips);
+    // 添加open片段到selectedClips的开头
+    if (openAssign.length > 0 && openAssign[successCount]) {
+      // 如果openAssign[successCount]是数组（多个开头片段），则直接合并
+      // 否则保持原有逻辑（单个开头片段）
+      if (Array.isArray(openAssign[successCount])) {
+        selectedClips = openAssign[successCount].concat(selectedClips);
+      } else {
+        selectedClips = [openAssign[successCount]].concat(selectedClips);
+      }
     }
     // 新增：最小分辨率自动放大处理（保持 idList 基于原文件名）
     const originalForIds = selectedClips.slice();
@@ -906,7 +933,7 @@ async function composeVideosWithOpen() {
       );
       fs.renameSync(tempOutPath, outPath);
       // 成功后更新当日最大序号状态，防止后续因删除导致回退
-      try { writeLastIndex(outputDir, videoNamePrefix, dateStr, videoIdx); } catch (_) {}
+      try { writeLastIndex(outputDir, videoNamePrefix, dateStr, videoIdx); } catch (_) { }
       const endTime = Date.now();
       const cost = ((endTime - startTime) / 1000).toFixed(2);
       videoTimes.push({
@@ -918,10 +945,10 @@ async function composeVideosWithOpen() {
       logToFile(`第${successCount + 1}个视频合成完成: ${outFileName}，耗时${cost}秒`);
       // 记录到对象
       allVideoIdsObj[outFileName] = { ids: idList, music: musicFiles[audioIdx] };
-      
+
       // 更新合成记录
       updateSynthesisLog(outFileName, idList, musicFiles[audioIdx]);
-      
+
       successCount++;
     } catch (error) {
       console.error(`第${successCount + 1}个视频合成失败:`, error.message);
@@ -946,14 +973,16 @@ async function composeVideosWithOpen() {
     }
   }
 
-// 输出到 js 文件（对象格式） - 保留原有功能
-const jsOut = `// 每个视频的片段标识
-const videoIds = ${JSON.stringify(allVideoIdsObj, null, 2)};
-module.exports = { videoIds }
-`;
-fs.writeFileSync(path.join(batchDir, 'video_ids.js'), jsOut);
-console.log(`全部合成完成，片段标识已输出到 ${batchDir}/video_ids.js`);
-logToFile(`全部合成完成，片段标识已输出到 ${batchDir}/video_ids.js`);
+  // 输出到 js 文件（对象格式） - 保留原有功能
+  /*
+  const jsOut = `// 每个视频的片段标识
+  const videoIds = ${JSON.stringify(allVideoIdsObj, null, 2)};
+  module.exports = { videoIds }
+  `;
+  fs.writeFileSync(path.join(batchDir, 'video_ids.js'), jsOut);
+  console.log(`全部合成完成，片段标识已输出到 ${batchDir}/video_ids.js`);
+  logToFile(`全部合成完成，片段标识已输出到 ${batchDir}/video_ids.js`);
+  */
   // 记录本轮最后一次用到的音频索引
   const newLastIdx = (musicStartIdx + successCount - 1 + musicFiles.length) % musicFiles.length;
   fs.writeFileSync(lastMusicIdxPath, JSON.stringify({
@@ -1045,7 +1074,7 @@ function readLastIndex(rootDir, prefix, dateStr) {
       const v = data[key];
       if (Number.isFinite(v)) return v;
     }
-  } catch (_) {}
+  } catch (_) { }
   return 0;
 }
 
@@ -1056,11 +1085,11 @@ function writeLastIndex(rootDir, prefix, dateStr, idx) {
     if (fs.existsSync(statePath)) {
       data = JSON.parse(fs.readFileSync(statePath, 'utf8')) || {};
     }
-  } catch (_) {}
+  } catch (_) { }
   const key = `${prefix}_${dateStr}`;
   if (!Number.isFinite(data[key]) || idx > data[key]) {
     data[key] = idx;
-    try { fs.writeFileSync(statePath, JSON.stringify(data, null, 2)); } catch (_) {}
+    try { fs.writeFileSync(statePath, JSON.stringify(data, null, 2)); } catch (_) { }
   }
 }
 
