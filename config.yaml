@@ -1,14 +1,17 @@
-useFrameAccurateSplit: false
+# 是否使用精确帧位置分割
+useFrameAccurateSplit: false 
+# 场景阈值 用于检测场景变化的阈值，值越小越敏感 
 sceneThreshold: 0.3
+# 分割视频时减去的帧数，避免跳帧
 minusFrames: 2
+# 视频开头片段目录(可选)
+openDir: open/6602
 
-# 开头片段目录
-openDir: open
-
-# 片段输出目录
-clipsDir: clips/801_fdt
-# 输入视频目录 提取音频的视频输入目录
+# 输入视频目录 提取音频的视频输入目录 分割视频的输入目录
 inputDir: input/801_fdt
+# 片段输出目录,合成视频片段输入目录
+clipsDir: clips/801_fdt
+
 # 音频文件目录
 musicDir: music/加绒打底裤_有口播
 # 音频提取输出目录
@@ -20,15 +23,16 @@ enableAudioFilter: false
 minAudioDuration: 15    # 最小音频时长
 maxAudioDuration: 40   # 最大音频时长
 
-# 合成输出目录
+# 合成视频输出目录
 outputDir: output/801
 
 # 视频导出文件名前缀
 videoNamePrefix: 801
 # 生成新视频数量
 numNewVideos: 100
-
+# 最小宽度
 minWidth: 720
+# 最小高度
 minHeight: 1280
 minVideoRate: 0.9
 maxVideoRate: 1.1
@@ -51,17 +55,25 @@ ffmpegAmfQuality: balanced
 ffmpegThreads: 0
 ffmpegCopyOnMux: true
 ffmpegRemuxCopy: true
+# 标准化参数
 standardize:
+  # 输入目录
   inputDir: input/198/未分析
+  # 输出目录后缀
   outputDirSuffix: _std
   requirePixFmt: yuv420p
   requireSar1: true
   targetFps: null
+  # 目标宽高比
   targetAspectRatio: '9:16'
+  # 宽高比模式
   aspectMode: none
+  # 填充颜色
   padColor: black
   ensureMinResolution: true
+  # 最小宽度
   minWidth: 720
+  # 最小高度
   minHeight: 1280
   scaleFlags: bicubic
   videoCodec: h264_amf
