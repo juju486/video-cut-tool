@@ -159,7 +159,7 @@ audio_video_adjustment:
 将待处理视频放入 `input/未分析` 文件夹（也可以是子文件夹），运行：
 
 ```bash
-node video_split.js
+node scripts/video_split.js
 ```
 
 - 自动分析视频场景并分割
@@ -172,7 +172,7 @@ node video_split.js
 
 #### 基础合成
 ```bash
-node video_concat.js
+node scripts/video_concat.js
 ```
 
 #### 带背景音乐的合成
@@ -188,7 +188,7 @@ node video_concat.js
 ### 3. 一体化处理
 弃用，建议分步运行
 ```bash
-node video_batch_edit.js
+node scripts/video_batch_edit.js
 ```
 
 自动完成分割和合成流程。
@@ -197,7 +197,7 @@ node video_batch_edit.js
 
 从视频文件中提取音频：
 ```bash
-node extract_audio.js
+node scripts/extract_audio.js
 ```
 
 功能特点：
@@ -221,7 +221,7 @@ node extract_audio.js
 基本不用，不好用QAQ
 #### 精确去重（基于时长和内容）
 ```bash
-node dedup_clips.js
+node scripts/dedup_clips.js
 ```
 
 检测完全重复的片段，基于：
@@ -230,7 +230,7 @@ node dedup_clips.js
 
 #### 相似度检测（基于视觉内容）
 ```bash
-node dedup_clips_similar.js
+node scripts/dedup_clips_similar.js
 ```
 
 检测相似片段，基于：
