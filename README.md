@@ -125,6 +125,7 @@ directories:
   clipsDir: clips            # 片段输出目录
   inputDir: input/未分析     # 输入视频目录
   openDir: open              # 开头片段目录
+  openClipsCount: 1          # 开头片段数量 0表示不启用
   musicDir: music            # 音频文件目录
   audioExtractDir: music     # 音频提取输出目录
   outputDir: output          # 合成输出目录

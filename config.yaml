@@ -6,6 +6,8 @@ sceneThreshold: 0.3
 minusFrames: 2
 # 视频开头片段目录(可选)
 openDir: open/6602
+# 片段开头片段数量 0表示不启用
+openClipsCount: 1
 
 # 输入视频目录 提取音频的视频输入目录 分割视频的输入目录
 inputDir: input/801_fdt
@@ -34,10 +36,15 @@ numNewVideos: 100
 minWidth: 720
 # 最小高度
 minHeight: 1280
+# 音视频长度不一致时，允许的调整的速率最小值
 minVideoRate: 0.9
+# 音视频长度不一致时，允许的调整的速率最大值
 maxVideoRate: 1.1
+# 片段最短时长
 minClipDuration: 0.7
+# 片段最长时长
 maxClipDuration: 6
+# 音频与视频时长差异最大允许值，小于等于这个值，直接截断
 maxAVDiff: 0.2
 ffmpegTimeout: 120
 videoShorterAudioMaxDiff: 2
