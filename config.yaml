@@ -17,7 +17,7 @@ inputDir: input/801_fdt
 # 音频文件目录
 musicDir: music/加绒打底裤_有口播
 # 音频提取输出目录
-audioExtractDir: music/加绒打底裤_有口播
+audioExtractDir: music/A198薄款打底裤
 
 # 是否启用音频预筛选
 enableAudioFilter: false
@@ -31,7 +31,7 @@ outputDir: output/801
 # 视频导出文件名前缀
 videoNamePrefix: 801
 # 生成新视频数量
-numNewVideos: 50
+numNewVideos: 100
 
 minWidth: 720
 minHeight: 1280
